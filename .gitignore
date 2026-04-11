@@ -1,0 +1,6 @@
+node_modules/
+dist/
+cache/pending/*.yaml
+cache/session-state.yaml
+*.js.map
+*.d.ts.map
