@@ -1,7 +1,7 @@
 {
   "name": "io.github.sharpninja/mcpserver-cline-plugin",
-  "version": "1.0.0",
-  "description": "MCP server for Cline (VSCode) providing TODO management, session logging, requirements tracking, and GraphRAG knowledge graph via McpServer",
+  "version": "1.1.0",
+  "description": "MCP server for Cline (VSCode) providing TODO management, session logging, requirements tracking, GraphRAG knowledge graph, and per-turn + build-verification enforcement scripts via McpServer",
   "author": "Payton Byrd (The Sharp Ninja)",
   "license": "MIT",
   "homepage": "https://github.com/sharpninja/mcpserver-cline-plugin",

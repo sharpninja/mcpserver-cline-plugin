@@ -1,7 +1,7 @@
 {
   "name": "@sharpninja/mcpserver-cline-plugin",
-  "version": "1.0.0",
-  "description": "MCP server bridging Cline (VSCode) to McpServer workflow tools — TODO management, session logging, requirements tracking, and GraphRAG knowledge graph",
+  "version": "1.1.0",
+  "description": "MCP server bridging Cline (VSCode) to McpServer workflow tools — TODO management, session logging, requirements tracking, GraphRAG knowledge graph, and per-turn + build-verification enforcement scripts",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
