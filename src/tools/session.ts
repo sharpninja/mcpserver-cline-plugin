@@ -1,5 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ReplBridge } from '../transport/repl-bridge.js';
+import { SessionShim, dispatchSessionTool } from './session-shim.js';
 
 export const sessionTools: Tool[] = [
   {
@@ -145,21 +146,25 @@ export const sessionTools: Tool[] = [
   },
 ];
 
-const toolMethodMap: Record<string, string> = {
-  session_bootstrap: 'workflow.sessionlog.bootstrap',
-  session_open: 'workflow.sessionlog.openSession',
-  session_begin_turn: 'workflow.sessionlog.beginTurn',
-  session_update_turn: 'workflow.sessionlog.updateTurn',
-  session_append_dialog: 'workflow.sessionlog.appendDialog',
-  session_append_actions: 'workflow.sessionlog.appendActions',
-  session_complete_turn: 'workflow.sessionlog.completeTurn',
-  session_fail_turn: 'workflow.sessionlog.failTurn',
-  session_query_history: 'workflow.sessionlog.queryHistory',
-  session_close: 'workflow.sessionlog.closeSession',
-};
+const knownTools = new Set([
+  'session_bootstrap',
+  'session_open',
+  'session_begin_turn',
+  'session_update_turn',
+  'session_append_dialog',
+  'session_append_actions',
+  'session_complete_turn',
+  'session_fail_turn',
+  'session_query_history',
+  'session_close',
+]);
+
+// Process-wide session state. The MCP server is one long-lived child of
+// the Cline VS Code extension, so a singleton matches the lifecycle.
+const sessionShim = new SessionShim();
 
 export function canHandleSessionTool(name: string): boolean {
-  return name in toolMethodMap;
+  return knownTools.has(name);
 }
 
 export async function handleSessionTool(
@@ -167,10 +172,9 @@ export async function handleSessionTool(
   args: Record<string, unknown>,
   bridge: ReplBridge,
 ) {
-  const method = toolMethodMap[name];
-  if (!method) throw new Error(`Unknown session tool: ${name}`);
+  if (!knownTools.has(name)) throw new Error(`Unknown session tool: ${name}`);
 
-  const response = await bridge.invoke(method, args);
+  const response = await dispatchSessionTool(sessionShim, bridge, name, args);
 
   if (response.type === 'error') {
     const payload = response.payload as { message?: string; code?: string };
@@ -180,4 +184,9 @@ export async function handleSessionTool(
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(response.payload, null, 2) }],
   };
+}
+
+/** Test-only: reset singleton between specs. Not part of the MCP surface. */
+export function __resetSessionShimForTests(): void {
+  sessionShim.reset();
 }
