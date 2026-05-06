@@ -8,7 +8,7 @@ export const requirementsTools: Tool[] = [
   // --- Functional Requirements ---
   {
     name: 'req_list_fr',
-    description: 'List functional requirements with optional area and status filters.',
+    description: 'List workspace-scoped functional requirements from the database source of truth.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -19,7 +19,7 @@ export const requirementsTools: Tool[] = [
   },
   {
     name: 'req_get_fr',
-    description: 'Fetch a single functional requirement by ID.',
+    description: 'Fetch a single workspace-scoped functional requirement by ID.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string', description: 'FR ID (pattern: FR-AREA-###)' } },
@@ -28,7 +28,7 @@ export const requirementsTools: Tool[] = [
   },
   {
     name: 'req_create_fr',
-    description: 'Create a new functional requirement.',
+    description: 'Create a new workspace-scoped functional requirement in the database source of truth.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -70,7 +70,7 @@ export const requirementsTools: Tool[] = [
   // --- Technical Requirements ---
   {
     name: 'req_list_tr',
-    description: 'List technical requirements with optional area and subarea filters.',
+    description: 'List workspace-scoped technical requirements from the database source of truth.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -124,7 +124,7 @@ export const requirementsTools: Tool[] = [
   // --- Test Requirements ---
   {
     name: 'req_list_test',
-    description: 'List test requirements with optional area filter.',
+    description: 'List workspace-scoped test requirements from the database source of truth.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -176,7 +176,7 @@ export const requirementsTools: Tool[] = [
   // --- Mappings ---
   {
     name: 'req_list_mappings',
-    description: 'Query FR↔TR↔TEST traceability mappings.',
+    description: 'Query workspace-scoped FR to TR and FR to TEST traceability links.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -188,21 +188,31 @@ export const requirementsTools: Tool[] = [
   },
   {
     name: 'req_create_mapping',
-    description: 'Link a functional requirement to a technical requirement and test.',
+    description: 'Link one FR to one or more TR and TEST requirements in the active workspace.',
     inputSchema: {
       type: 'object',
       properties: {
         frId: { type: 'string' },
-        trId: { type: 'string' },
-        testId: { type: 'string' },
+        trId: { type: 'string', description: 'Legacy single TR ID. Prefer trIds.' },
+        trIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'TR IDs to link to the FR.',
+        },
+        testId: { type: 'string', description: 'Legacy single TEST ID. Prefer testIds.' },
+        testIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'TEST IDs to link to the FR.',
+        },
         notes: { type: 'string' },
       },
-      required: ['frId', 'trId', 'testId'],
+      required: ['frId'],
     },
   },
   {
     name: 'req_delete_mapping',
-    description: 'Remove a traceability link between FR and TR.',
+    description: 'Remove workspace-scoped traceability links by FR, TR, and/or TEST filter.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -215,7 +225,7 @@ export const requirementsTools: Tool[] = [
   // --- Documents ---
   {
     name: 'req_generate_document',
-    description: 'Render requirements as a formatted document (matrix, functional, technical, testing).',
+    description: 'Render workspace-limited requirements from the database as Markdown.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -227,7 +237,7 @@ export const requirementsTools: Tool[] = [
   },
   {
     name: 'req_ingest_document',
-    description: 'Import requirements from a Markdown document.',
+    description: 'Import Markdown requirements into the workspace database source of truth.',
     inputSchema: {
       type: 'object',
       properties: {

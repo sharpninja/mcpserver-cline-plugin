@@ -75,6 +75,33 @@ export function parseMarkerField(
   return null;
 }
 
+function parseMarkerNestedField(
+  markerFile: string,
+  sectionName: string,
+  fieldName: string,
+): string | null {
+  const lines = fs.readFileSync(markerFile, 'utf8').split('\n');
+  let inSection = false;
+
+  for (const line of lines) {
+    if (new RegExp(`^${sectionName}:`).test(line)) {
+      inSection = true;
+      continue;
+    }
+    if (inSection && /^[^\s]/.test(line)) {
+      break;
+    }
+    if (inSection) {
+      const m = line.match(new RegExp(`^\\s+${fieldName}:\\s*(.*)`));
+      if (m) {
+        return m[1].trim().replace(/^["']|["']$/g, '');
+      }
+    }
+  }
+
+  return null;
+}
+
 /**
  * Build the canonical payload for HMAC verification.
  * Field order MUST match the bash version in lib/marker-resolver.sh (marker-v1).
@@ -111,6 +138,13 @@ function buildCanonicalPayload(markerFile: string): string {
         lines.push(`endpoints.${key}=${val}`);
       }
     }
+  }
+
+  const agentPluginPolicy = parseMarkerNestedField(markerFile, 'agent_plugins', 'policy');
+  const agentPluginDigest = parseMarkerNestedField(markerFile, 'agent_plugins', 'contract_digest');
+  if (agentPluginPolicy !== null || agentPluginDigest !== null) {
+    lines.push(`agentPlugins.policy=${agentPluginPolicy ?? ''}`);
+    lines.push(`agentPlugins.contractDigest=${agentPluginDigest ?? ''}`);
   }
 
   // CRITICAL: Use LF line endings, same as bash echo -n behavior
