@@ -39,7 +39,9 @@ export class ReplBridge {
     const rand = Math.floor(Math.random() * 0xffff)
       .toString(16)
       .padStart(4, '0');
-    return `req-${ts}-${slug}-${rand}`;
+    // Ensure slug only contains lowercase alphanumeric characters
+    const safeSlug = slug.toLowerCase().replace(/[^a-z0-9]/g, '') || 'req';
+    return `req-${ts}-${safeSlug}-${rand}`;
   }
 
   /** Ensure the REPL process is running, restarting if it crashed. */
