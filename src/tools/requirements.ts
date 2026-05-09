@@ -225,26 +225,55 @@ export const requirementsTools: Tool[] = [
   // --- Documents ---
   {
     name: 'req_generate_document',
-    description: 'Render workspace-limited requirements from the database as Markdown.',
+    description: 'Render workspace-limited requirements from the database as Markdown/YAML or write wiki/all documents directly to the workspace.',
     inputSchema: {
       type: 'object',
       properties: {
-        format: { type: 'string', enum: ['markdown'], description: 'Output format' },
-        docType: { type: 'string', enum: ['matrix', 'functional', 'technical', 'testing'] },
+        format: { type: 'string', enum: ['markdown', 'yaml', 'wiki'], description: 'Output format' },
+        docType: { type: 'string', enum: ['matrix', 'functional', 'technical', 'testing', 'all'] },
       },
       required: ['docType'],
     },
   },
   {
     name: 'req_ingest_document',
-    description: 'Import Markdown requirements into the workspace database source of truth.',
+    description: 'Import Markdown/YAML requirements or Azure/GitHub wiki documents into the workspace database source of truth.',
     inputSchema: {
       type: 'object',
       properties: {
-        content: { type: 'string', description: 'Markdown content with FR/TR/TEST sections' },
-        format: { type: 'string', enum: ['markdown'] },
+        content: { type: 'string', description: 'Markdown or YAML content with FR/TR/TEST sections' },
+        format: { type: 'string', enum: ['markdown', 'yaml', 'wiki'] },
+        sourceFormat: {
+          type: 'string',
+          enum: ['auto', 'canonical', 'wiki'],
+          description: 'Source document shape. Use auto unless forcing canonical or wiki handling.',
+        },
+        preferredWikiFormat: {
+          type: 'string',
+          enum: ['azure', 'github'],
+          description: 'Tie-breaker when wiki manifest and file modified timestamps disagree.',
+        },
+        documents: {
+          type: 'object',
+          additionalProperties: {
+            oneOf: [
+              { type: 'string' },
+              {
+                type: 'object',
+                properties: {
+                  content: { type: 'string' },
+                  contentBase64: { type: 'string' },
+                  lastModifiedUtc: {
+                    type: 'string',
+                    description: 'File or ZIP entry modified time in UTC.',
+                  },
+                },
+              },
+            ],
+          },
+          description: 'Path-keyed document map for wiki imports, including per-document timestamps when available.',
+        },
       },
-      required: ['content'],
     },
   },
 ];
