@@ -1,5 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { ReplBridge } from '../transport/repl-bridge.js';
+import type { ReplBridge, ReplResponse } from '../transport/repl-bridge.js';
 
 const STATUS_ENUM = ['pending', 'in_progress', 'completed', 'deferred'] as const;
 const PRIORITY_ENUM = ['critical', 'high', 'medium', 'low'] as const;
@@ -278,7 +278,7 @@ export const requirementsTools: Tool[] = [
   },
 ];
 
-const toolMethodMap: Record<string, string> = {
+const workflowMethodMap: Record<string, string> = {
   req_list_fr: 'workflow.requirements.listFr',
   req_get_fr: 'workflow.requirements.getFr',
   req_create_fr: 'workflow.requirements.createFr',
@@ -299,8 +299,310 @@ const toolMethodMap: Record<string, string> = {
   req_ingest_document: 'workflow.requirements.ingestDocument',
 };
 
+const typedMethodMap: Record<string, string> = {
+  req_list_fr: 'client.Requirements.ListFrAsync',
+  req_get_fr: 'client.Requirements.GetFrAsync',
+  req_create_fr: 'client.Requirements.CreateFrAsync',
+  req_update_fr: 'client.Requirements.UpdateFrAsync',
+  req_delete_fr: 'client.Requirements.DeleteFrAsync',
+  req_list_tr: 'client.Requirements.ListTrAsync',
+  req_create_tr: 'client.Requirements.CreateTrAsync',
+  req_update_tr: 'client.Requirements.UpdateTrAsync',
+  req_delete_tr: 'client.Requirements.DeleteTrAsync',
+  req_list_test: 'client.Requirements.ListTestAsync',
+  req_create_test: 'client.Requirements.CreateTestAsync',
+  req_update_test: 'client.Requirements.UpdateTestAsync',
+  req_delete_test: 'client.Requirements.DeleteTestAsync',
+  req_list_mappings: 'client.Requirements.ListMappingsAsync',
+  req_create_mapping: 'client.Requirements.UpsertMappingAsync',
+  req_delete_mapping: 'client.Requirements.DeleteMappingAsync',
+  req_generate_document: 'client.Requirements.GenerateAsync',
+  req_ingest_document: 'client.Requirements.IngestAsync',
+};
+
 export function canHandleRequirementsTool(name: string): boolean {
-  return name in toolMethodMap;
+  return name in workflowMethodMap;
+}
+
+function stringArg(args: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return '';
+}
+
+function workflowDocType(value: unknown): string {
+  switch (value) {
+    case 'functional':
+      return 'fr';
+    case 'technical':
+      return 'tr';
+    case 'testing':
+      return 'test';
+    case 'mapping':
+      return 'matrix';
+    case undefined:
+    case '':
+      return 'all';
+    default:
+      return String(value);
+  }
+}
+
+function typedDocType(value: unknown): string {
+  switch (value) {
+    case 'fr':
+      return 'functional';
+    case 'tr':
+      return 'technical';
+    case 'test':
+      return 'testing';
+    case 'matrix':
+      return 'mapping';
+    case undefined:
+    case '':
+      return 'all';
+    default:
+      return String(value);
+  }
+}
+
+function workflowParams(name: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (name !== 'req_generate_document') return args;
+  return {
+    format: typeof args.format === 'string' ? args.format : 'markdown',
+    docType: workflowDocType(args.docType),
+  };
+}
+
+function idParam(args: Record<string, unknown>): Record<string, unknown> {
+  return { id: stringArg(args, 'id') };
+}
+
+function requestParam(request: Record<string, unknown>): Record<string, unknown> {
+  return { request };
+}
+
+function listParam(
+  args: Record<string, unknown>,
+  pluralKey: string,
+  singleKey: string,
+): string[] {
+  const plural = args[pluralKey];
+  if (Array.isArray(plural)) return plural.filter((value): value is string => typeof value === 'string');
+  const single = args[singleKey];
+  return typeof single === 'string' && single.length > 0 ? [single] : [];
+}
+
+function typedParams(name: string, args: Record<string, unknown>): Record<string, unknown> {
+  switch (name) {
+    case 'req_list_fr':
+    case 'req_list_tr':
+    case 'req_list_test':
+    case 'req_list_mappings':
+      return {};
+
+    case 'req_get_fr':
+    case 'req_get_tr':
+    case 'req_get_test':
+    case 'req_delete_fr':
+    case 'req_delete_tr':
+    case 'req_delete_test':
+      return idParam(args);
+
+    case 'req_create_fr':
+    case 'req_create_tr':
+      return requestParam({
+        id: stringArg(args, 'id'),
+        title: stringArg(args, 'title'),
+        body: stringArg(args, 'description', 'body'),
+      });
+
+    case 'req_update_fr':
+    case 'req_update_tr':
+      return {
+        id: stringArg(args, 'id'),
+        request: {
+          title: stringArg(args, 'title'),
+          body: stringArg(args, 'description', 'body'),
+        },
+      };
+
+    case 'req_create_test':
+      return requestParam({
+        id: stringArg(args, 'id'),
+        condition: stringArg(args, 'description', 'condition'),
+      });
+
+    case 'req_update_test':
+      return {
+        id: stringArg(args, 'id'),
+        request: {
+          condition: stringArg(args, 'description', 'condition'),
+        },
+      };
+
+    case 'req_create_mapping':
+      return {
+        frId: stringArg(args, 'frId'),
+        request: {
+          trIds: listParam(args, 'trIds', 'trId'),
+          testIds: listParam(args, 'testIds', 'testId'),
+        },
+      };
+
+    case 'req_delete_mapping':
+      return { frId: stringArg(args, 'frId') };
+
+    case 'req_generate_document':
+      return {
+        doc: typedDocType(args.docType),
+        format: typeof args.format === 'string' ? args.format : 'markdown',
+      };
+
+    case 'req_ingest_document': {
+      const documents = args.documents;
+      if (documents && typeof documents === 'object' && !Array.isArray(documents)) {
+        return requestParam({
+          sourceFormat: typeof args.sourceFormat === 'string' ? args.sourceFormat : 'wiki',
+          ...(typeof args.preferredWikiFormat === 'string'
+            ? { preferredWikiFormat: args.preferredWikiFormat }
+            : {}),
+          documents,
+        });
+      }
+      const content = stringArg(args, 'content');
+      return requestParam({
+        functionalMarkdown: content,
+        technicalMarkdown: content,
+        testingMarkdown: content,
+        mappingMarkdown: content,
+      });
+    }
+
+    default:
+      return args;
+  }
+}
+
+function isEmptyResult(response: ReplResponse): boolean {
+  if (!Object.prototype.hasOwnProperty.call(response.payload, 'result')) return false;
+  const result = (response.payload as { result?: unknown }).result;
+  return (
+    result === undefined ||
+    result === null ||
+    (typeof result === 'object' && !Array.isArray(result) && Object.keys(result).length === 0)
+  );
+}
+
+function normalizeGenerateResponse(response: ReplResponse): ReplResponse {
+  const result = (response.payload as { result?: Record<string, unknown> }).result;
+  if (!result) return response;
+
+  const content = result.content;
+  if (!Array.isArray(content) || !content.every((value) => typeof value === 'number')) {
+    return response;
+  }
+
+  const bytes = Buffer.from(content as number[]);
+  const contentType = typeof result.contentType === 'string' ? result.contentType : 'text/markdown';
+  const fileName = typeof result.fileName === 'string' ? result.fileName : '';
+  const isZip = /zip/i.test(contentType) || /\.zip$/i.test(fileName);
+
+  return {
+    type: 'result',
+    payload: {
+      ...response.payload,
+      result: {
+        ...result,
+        ...(isZip
+          ? {
+              contentBase64: bytes.toString('base64'),
+              fileName: fileName || 'requirements-documents.zip',
+            }
+          : { content: bytes.toString('utf8') }),
+        contentType,
+        format: typeof result.format === 'string' ? result.format : 'markdown',
+        docType: typeof result.docType === 'string' ? result.docType : 'all',
+        generatedAt:
+          typeof result.generatedAt === 'string'
+            ? result.generatedAt
+            : new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      },
+    },
+  };
+}
+
+async function generateDocumentHttpFallback(
+  args: Record<string, unknown>,
+): Promise<ReplResponse | null> {
+  const format = typeof args.format === 'string' ? args.format : 'markdown';
+  if (format !== 'wiki') return null;
+
+  const fetchFn = globalThis.fetch;
+  const apiKey = process.env.MCPSERVER_API_KEY;
+  const workspacePath = process.env.MCPSERVER_WORKSPACE_PATH ?? process.env.MCP_WORKSPACE_PATH;
+  const baseUrl = process.env.MCPSERVER_BASE_URL ?? process.env.MCP_SERVER_URL;
+  if (typeof fetchFn !== 'function' || !apiKey || !workspacePath || !baseUrl) return null;
+
+  const docType = typedDocType(args.docType);
+  const url = `${baseUrl.replace(/\/$/, '')}/mcpserver/requirements/generate?doc=${encodeURIComponent(
+    docType,
+  )}&format=${encodeURIComponent(format)}`;
+
+  const response = await fetchFn(url, {
+    headers: {
+      'X-Api-Key': apiKey,
+      'X-Workspace-Path': workspacePath,
+    },
+  });
+  if (!response.ok) return null;
+
+  const contentType = response.headers.get('content-type')?.split(';')[0] || 'application/zip';
+  const contentBase64 = Buffer.from(await response.arrayBuffer()).toString('base64');
+  return {
+    type: 'result',
+    payload: {
+      result: {
+        contentBase64,
+        contentType,
+        ...(/zip/i.test(contentType) ? { fileName: 'requirements-wiki-documents.zip' } : {}),
+        format,
+        docType,
+        generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      },
+    },
+  };
+}
+
+async function invokeRequirementsTool(
+  name: string,
+  args: Record<string, unknown>,
+  bridge: ReplBridge,
+): Promise<ReplResponse> {
+  const workflowMethod = workflowMethodMap[name];
+  if (!workflowMethod) throw new Error(`Unknown requirements tool: ${name}`);
+
+  const workflowResponse = await bridge.invoke(workflowMethod, workflowParams(name, args));
+  if (workflowResponse.type !== 'error' && !isEmptyResult(workflowResponse)) {
+    return workflowResponse;
+  }
+
+  const typedMethod = typedMethodMap[name];
+  const typedResponse = await bridge.invoke(typedMethod, typedParams(name, args));
+  if (typedResponse.type !== 'error' && !isEmptyResult(typedResponse)) {
+    return name === 'req_generate_document'
+      ? normalizeGenerateResponse(typedResponse)
+      : typedResponse;
+  }
+
+  if (name === 'req_generate_document') {
+    const httpResponse = await generateDocumentHttpFallback(args);
+    if (httpResponse) return httpResponse;
+  }
+
+  return typedResponse;
 }
 
 export async function handleRequirementsTool(
@@ -308,10 +610,7 @@ export async function handleRequirementsTool(
   args: Record<string, unknown>,
   bridge: ReplBridge,
 ) {
-  const method = toolMethodMap[name];
-  if (!method) throw new Error(`Unknown requirements tool: ${name}`);
-
-  const response = await bridge.invoke(method, args);
+  const response = await invokeRequirementsTool(name, args, bridge);
 
   if (response.type === 'error') {
     const payload = response.payload as { message?: string; code?: string };

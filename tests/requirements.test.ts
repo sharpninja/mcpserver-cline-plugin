@@ -4,9 +4,13 @@ import type { ReplBridge, ReplResponse } from '../src/transport/repl-bridge.js';
 class FakeBridge {
   calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
   nextResponse: ReplResponse = { type: 'result', payload: { ok: true } };
+  responses: ReplResponse[] = [];
 
   async invoke(method: string, params?: Record<string, unknown>): Promise<ReplResponse> {
     this.calls.push({ method, params });
+    if (this.responses.length > 0) {
+      return this.responses.shift()!;
+    }
     return this.nextResponse;
   }
 }
@@ -86,5 +90,120 @@ describe('handleRequirementsTool', () => {
         params,
       },
     ]);
+  });
+
+  test('falls back to typed list when workflow requirements route is missing', async () => {
+    const fake = new FakeBridge();
+    fake.responses = [
+      {
+        type: 'error',
+        payload: { code: 'method_not_found', message: 'not routed' },
+      },
+      {
+        type: 'result',
+        payload: { result: { items: [], totalCount: 0 } },
+      },
+    ];
+
+    await handleRequirementsTool('req_list_fr', {}, asBridge(fake));
+
+    expect(fake.calls).toEqual([
+      { method: 'workflow.requirements.listFr', params: {} },
+      { method: 'client.Requirements.ListFrAsync', params: {} },
+    ]);
+  });
+
+  test('falls back to typed wiki generate when workflow rejects wiki format', async () => {
+    const fake = new FakeBridge();
+    fake.responses = [
+      {
+        type: 'error',
+        payload: { code: 'invalid_argument', message: 'Invalid format: wiki' },
+      },
+      {
+        type: 'result',
+        payload: {
+          result: {
+            success: true,
+            format: 'wiki',
+            docType: 'all',
+            outputRoot: 'F:\\GitHub\\TruckMate\\docs\\Project\\wiki',
+          },
+        },
+      },
+    ];
+
+    await handleRequirementsTool(
+      'req_generate_document',
+      { format: 'wiki', docType: 'all' },
+      asBridge(fake),
+    );
+
+    expect(fake.calls).toEqual([
+      {
+        method: 'workflow.requirements.generateDocument',
+        params: { format: 'wiki', docType: 'all' },
+      },
+      {
+        method: 'client.Requirements.GenerateAsync',
+        params: { doc: 'all', format: 'wiki' },
+      },
+    ]);
+  });
+
+  test('uses HTTP wiki fallback when typed generate returns empty result', async () => {
+    const fake = new FakeBridge();
+    fake.responses = [
+      {
+        type: 'error',
+        payload: { code: 'invalid_argument', message: 'Invalid format: wiki' },
+      },
+      {
+        type: 'result',
+        payload: { result: {} },
+      },
+    ];
+
+    const oldFetch = globalThis.fetch;
+    const oldApiKey = process.env.MCPSERVER_API_KEY;
+    const oldWorkspacePath = process.env.MCPSERVER_WORKSPACE_PATH;
+    const oldBaseUrl = process.env.MCPSERVER_BASE_URL;
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+
+    process.env.MCPSERVER_API_KEY = 'test-api-key';
+    process.env.MCPSERVER_WORKSPACE_PATH = 'F:\\GitHub\\TruckMate';
+    process.env.MCPSERVER_BASE_URL = 'http://127.0.0.1:8765';
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      headers: { get: () => 'application/zip' },
+      arrayBuffer: async () => bytes.buffer,
+    })) as unknown as typeof fetch;
+
+    try {
+      const result = await handleRequirementsTool(
+        'req_generate_document',
+        { format: 'wiki', docType: 'all' },
+        asBridge(fake),
+      );
+
+      expect(JSON.stringify(result.content)).toContain('UEsDBA==');
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:8765/mcpserver/requirements/generate?doc=all&format=wiki',
+        {
+          headers: {
+            'X-Api-Key': 'test-api-key',
+            'X-Workspace-Path': 'F:\\GitHub\\TruckMate',
+          },
+        },
+      );
+    } finally {
+      globalThis.fetch = oldFetch;
+      if (oldApiKey === undefined) delete process.env.MCPSERVER_API_KEY;
+      else process.env.MCPSERVER_API_KEY = oldApiKey;
+      if (oldWorkspacePath === undefined) delete process.env.MCPSERVER_WORKSPACE_PATH;
+      else process.env.MCPSERVER_WORKSPACE_PATH = oldWorkspacePath;
+      if (oldBaseUrl === undefined) delete process.env.MCPSERVER_BASE_URL;
+      else process.env.MCPSERVER_BASE_URL = oldBaseUrl;
+    }
   });
 });
