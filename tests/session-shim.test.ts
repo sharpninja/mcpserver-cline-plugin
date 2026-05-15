@@ -12,6 +12,7 @@
 
 import { SessionShim, dispatchSessionTool, syntheticOk } from '../src/tools/session-shim.js';
 import type { ReplBridge, ReplResponse } from '../src/transport/repl-bridge.js';
+import { cacheFlush } from '../src/cache/cache-manager.js';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -283,6 +284,58 @@ describe('dispatchSessionTool', () => {
       expect(fs.readFileSync(path.join(failsafeDir, files[0]), 'utf8')).toContain(
         'client.SessionLog.SubmitAsync',
       );
+    } finally {
+      if (oldFailsafeDir === undefined) delete process.env.MCPSERVER_FAILSAFE_DIR;
+      else process.env.MCPSERVER_FAILSAFE_DIR = oldFailsafeDir;
+      fs.rmSync(failsafeDir, { recursive: true, force: true });
+    }
+  });
+
+  test('cacheFlush accepts nested YAML sessionLog failsafe entries', async () => {
+    const fake = new FakeBridge();
+    const oldFailsafeDir = process.env.MCPSERVER_FAILSAFE_DIR;
+    const failsafeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cline-session-yaml-failsafe-'));
+    process.env.MCPSERVER_FAILSAFE_DIR = failsafeDir;
+
+    fs.writeFileSync(
+      path.join(failsafeDir, '001-client-SessionLog-SubmitAsync.yaml'),
+      `id: '001'
+timestamp: '2026-05-15T00:00:00.000Z'
+method: client.SessionLog.SubmitAsync
+params:
+  sessionLog:
+    sourceType: Cline
+    sessionId: Cline-20260515T000000Z-yaml-recovery
+    title: YAML recovery
+    status: completed
+    turns:
+      - requestId: req-20260515T000100Z-yaml-recovery
+        queryTitle: YAML import
+        queryText: |
+          Preserve this nested YAML turn.
+        status: completed
+        response: >-
+          folded response should become text, not the literal marker.
+        actions:
+          - order: 1
+            description: validated nested yaml failsafe
+            type: edit
+            status: completed
+retryCount: 0
+`,
+    );
+
+    try {
+      const result = await cacheFlush(asBridge(fake));
+
+      expect(result).toEqual({ flushed: 1, failed: 0, pending: 0 });
+      expect(fake.calls).toHaveLength(1);
+      expect(fake.calls[0].method).toBe('client.SessionLog.SubmitAsync');
+      const payload = fake.calls[0].params as { sessionLog: { turns: Record<string, unknown>[] } };
+      expect(payload.sessionLog.turns[0]).toMatchObject({
+        requestId: 'req-20260515T000100Z-yaml-recovery',
+        response: 'folded response should become text, not the literal marker.',
+      });
     } finally {
       if (oldFailsafeDir === undefined) delete process.env.MCPSERVER_FAILSAFE_DIR;
       else process.env.MCPSERVER_FAILSAFE_DIR = oldFailsafeDir;
