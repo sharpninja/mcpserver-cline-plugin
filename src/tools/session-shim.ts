@@ -1,4 +1,5 @@
 import type { ReplBridge, ReplResponse } from '../transport/repl-bridge.js';
+import { cacheDelete, cacheWrite } from '../cache/cache-manager.js';
 
 /**
  * Shim for the workflow.sessionlog.* MCP tool family.
@@ -228,6 +229,95 @@ export function syntheticOk(detail: string): ReplResponse {
   };
 }
 
+async function querySessionHistoryHttpFallback(
+  args: Record<string, unknown>,
+): Promise<ReplResponse | null> {
+  const fetchFn = globalThis.fetch;
+  const apiKey = process.env.MCPSERVER_API_KEY;
+  const workspacePath = process.env.MCPSERVER_WORKSPACE_PATH ?? process.env.MCP_WORKSPACE_PATH;
+  const baseUrl = process.env.MCPSERVER_BASE_URL ?? process.env.MCP_SERVER_URL;
+  if (typeof fetchFn !== 'function' || !apiKey || !workspacePath || !baseUrl) return null;
+
+  const url = new URL(`${baseUrl.replace(/\/$/, '')}/mcpserver/sessionlog`);
+  for (const key of ['agent', 'model', 'text', 'from', 'to', 'limit', 'offset']) {
+    const value = args[key];
+    if (value !== undefined && value !== null && String(value).length > 0) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  const response = await fetchFn(url, {
+    headers: {
+      'X-Api-Key': apiKey,
+      'X-Workspace-Path': workspacePath,
+    },
+  });
+
+  const body = await response.text().catch(() => '');
+  if (!response.ok) {
+    return {
+      type: 'error',
+      payload: {
+        code: 'http_error',
+        message: `session log query HTTP fallback returned HTTP ${response.status}${body ? `: ${body}` : ''}`,
+      },
+    };
+  }
+
+  const contentType = response.headers.get('content-type')?.split(';')[0] || 'application/json';
+  let result: unknown = body;
+  if (/json/i.test(contentType) && body) {
+    try {
+      result = JSON.parse(body);
+    } catch {
+      result = body;
+    }
+  }
+
+  return {
+    type: 'result',
+    payload: {
+      result,
+      contentType,
+    },
+  };
+}
+
+async function submitSessionWithFailsafe(
+  shim: SessionShim,
+  bridge: ReplBridge,
+): Promise<ReplResponse> {
+  const payload = shim.buildSubmitPayload();
+  const failsafePath = await cacheWrite('client.SessionLog.SubmitAsync', payload);
+
+  try {
+    const response = await bridge.invoke('client.SessionLog.SubmitAsync', payload);
+    if (response.type !== 'error') {
+      await cacheDelete(failsafePath);
+      return response;
+    }
+
+    const errorPayload = response.payload as { message?: string; code?: string };
+    return {
+      type: 'error',
+      payload: {
+        ...errorPayload,
+        message: `${errorPayload.message ?? 'Unknown error'} Local failsafe saved: ${failsafePath}`,
+        failsafePath,
+      },
+    };
+  } catch (error) {
+    return {
+      type: 'error',
+      payload: {
+        code: 'invoke_failed',
+        message: `${error instanceof Error ? error.message : String(error)} Local failsafe saved: ${failsafePath}`,
+        failsafePath,
+      },
+    };
+  }
+}
+
 /**
  * Top-level dispatcher. Maps a session_* tool name to the right
  * combination of in-memory mutation + server call. Returns the response
@@ -254,31 +344,30 @@ export async function dispatchSessionTool(
 
     case 'session_update_turn':
       shim.updateTurn(args as Parameters<SessionShim['updateTurn']>[0]);
-      return bridge.invoke('client.SessionLog.SubmitAsync', shim.buildSubmitPayload());
+      return submitSessionWithFailsafe(shim, bridge);
 
     case 'session_append_dialog':
       shim.appendDialog(args as Parameters<SessionShim['appendDialog']>[0]);
-      return bridge.invoke('client.SessionLog.SubmitAsync', shim.buildSubmitPayload());
+      return submitSessionWithFailsafe(shim, bridge);
 
     case 'session_append_actions':
       shim.appendActions(args as Parameters<SessionShim['appendActions']>[0]);
-      return bridge.invoke('client.SessionLog.SubmitAsync', shim.buildSubmitPayload());
+      return submitSessionWithFailsafe(shim, bridge);
 
     case 'session_complete_turn':
       shim.completeTurn(args as Parameters<SessionShim['completeTurn']>[0]);
-      return bridge.invoke('client.SessionLog.SubmitAsync', shim.buildSubmitPayload());
+      return submitSessionWithFailsafe(shim, bridge);
 
     case 'session_fail_turn':
       shim.failTurn(args as Parameters<SessionShim['failTurn']>[0]);
-      return bridge.invoke('client.SessionLog.SubmitAsync', shim.buildSubmitPayload());
+      return submitSessionWithFailsafe(shim, bridge);
 
     case 'session_query_history':
-      // Direct passthrough — QueryAsync exists server-side.
-      return bridge.invoke('client.SessionLog.QueryAsync', args);
+      return (await querySessionHistoryHttpFallback(args)) ?? bridge.invoke('client.SessionLog.QueryAsync', args);
 
     case 'session_close':
       shim.close(args as Parameters<SessionShim['close']>[0]);
-      return bridge.invoke('client.SessionLog.SubmitAsync', shim.buildSubmitPayload());
+      return submitSessionWithFailsafe(shim, bridge);
 
     default:
       throw new Error(`Unknown session tool: ${toolName}`);

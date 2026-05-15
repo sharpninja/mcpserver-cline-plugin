@@ -12,6 +12,7 @@ interface PendingRequest {
   reject: (reason: Error) => void;
   events: ReplResponse[];
   onEvent?: (event: ReplResponse) => void;
+  timer?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -65,11 +66,36 @@ export class ReplBridge {
       process.stderr.write(`[repl] mcpserver-repl exited with code ${code}\n`);
       // Reject all pending requests
       for (const [, req] of this.pending) {
+        if (req.timer) clearTimeout(req.timer);
         req.reject(new Error(`mcpserver-repl exited with code ${code}`));
       }
       this.pending.clear();
       this.proc = null;
     });
+  }
+
+  private terminateAfterTimeout(message: string, exceptRequestId?: string): void {
+    const proc = this.proc;
+    this.proc = null;
+    this.docBuffer = '';
+
+    for (const [requestId, req] of this.pending) {
+      if (requestId === exceptRequestId) continue;
+      if (req.timer) clearTimeout(req.timer);
+      req.reject(new Error(message));
+    }
+    this.pending.clear();
+
+    if (!proc || proc.exitCode !== null || proc.killed) {
+      return;
+    }
+
+    proc.kill('SIGTERM');
+    setTimeout(() => {
+      if (proc.exitCode === null && !proc.killed) {
+        proc.kill('SIGKILL');
+      }
+    }, 2000).unref();
   }
 
   private onLine(line: string): void {
@@ -114,6 +140,7 @@ export class ReplBridge {
     } else {
       // Final result or error
       this.pending.delete(requestId);
+      if (pending.timer) clearTimeout(pending.timer);
       pending.resolve(response);
     }
   }
@@ -132,7 +159,14 @@ export class ReplBridge {
     );
 
     return new Promise<ReplResponse>((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject, events: [] });
+      const timeoutMs = Number(process.env.MCPSERVER_REPL_TIMEOUT_MS ?? '15000');
+      const timer = setTimeout(() => {
+        this.pending.delete(requestId);
+        const message = `mcpserver-repl timed out after ${timeoutMs}ms for ${method}`;
+        this.terminateAfterTimeout(message, requestId);
+        reject(new Error(message));
+      }, timeoutMs);
+      this.pending.set(requestId, { resolve, reject, events: [], timer });
 
       const envelope: Record<string, unknown> = {
         type: 'request',
@@ -163,7 +197,14 @@ export class ReplBridge {
     );
 
     return new Promise<ReplResponse>((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject, events: [], onEvent });
+      const timeoutMs = Number(process.env.MCPSERVER_REPL_TIMEOUT_MS ?? '15000');
+      const timer = setTimeout(() => {
+        this.pending.delete(requestId);
+        const message = `mcpserver-repl timed out after ${timeoutMs}ms for ${method}`;
+        this.terminateAfterTimeout(message, requestId);
+        reject(new Error(message));
+      }, timeoutMs);
+      this.pending.set(requestId, { resolve, reject, events: [], onEvent, timer });
 
       const envelope: Record<string, unknown> = {
         type: 'request',

@@ -12,6 +12,9 @@
 
 import { SessionShim, dispatchSessionTool, syntheticOk } from '../src/tools/session-shim.js';
 import type { ReplBridge, ReplResponse } from '../src/transport/repl-bridge.js';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 /** Minimal ReplBridge stub that records every invoke() call. */
 class FakeBridge {
@@ -249,6 +252,44 @@ describe('dispatchSessionTool', () => {
     });
   });
 
+  test('session_update_turn keeps local failsafe when SubmitAsync returns error', async () => {
+    const { shim, fake, bridge } = setup();
+    const oldFailsafeDir = process.env.MCPSERVER_FAILSAFE_DIR;
+    const failsafeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cline-session-failsafe-'));
+    process.env.MCPSERVER_FAILSAFE_DIR = failsafeDir;
+    fake.nextResponse = {
+      type: 'error',
+      payload: { code: 'offline', message: 'server unavailable' },
+    };
+
+    try {
+      await dispatchSessionTool(shim, bridge, 'session_open', {
+        agent: 'Cline',
+        sessionId: 'Cline-x-001',
+        title: 'demo',
+      });
+      await dispatchSessionTool(shim, bridge, 'session_begin_turn', {
+        requestId: 'req-1',
+        queryTitle: 't',
+        queryText: 'q',
+      });
+
+      const response = await dispatchSessionTool(shim, bridge, 'session_update_turn', { response: 'draft' });
+
+      expect(response.type).toBe('error');
+      expect((response.payload as { failsafePath?: string }).failsafePath).toContain(failsafeDir);
+      const files = fs.readdirSync(failsafeDir).filter((file) => file.endsWith('.yaml'));
+      expect(files).toHaveLength(1);
+      expect(fs.readFileSync(path.join(failsafeDir, files[0]), 'utf8')).toContain(
+        'client.SessionLog.SubmitAsync',
+      );
+    } finally {
+      if (oldFailsafeDir === undefined) delete process.env.MCPSERVER_FAILSAFE_DIR;
+      else process.env.MCPSERVER_FAILSAFE_DIR = oldFailsafeDir;
+      fs.rmSync(failsafeDir, { recursive: true, force: true });
+    }
+  });
+
   test('session_append_actions invokes SubmitAsync with current turn including actions', async () => {
     const { shim, fake, bridge } = setup();
     await dispatchSessionTool(shim, bridge, 'session_open', {
@@ -280,6 +321,54 @@ describe('dispatchSessionTool', () => {
     expect(fake.calls).toHaveLength(1);
     expect(fake.calls[0].method).toBe('client.SessionLog.QueryAsync');
     expect(fake.calls[0].params).toEqual({ agent: 'Cline', limit: 5 });
+  });
+
+  test('session_query_history uses marker-auth HTTP fallback when available', async () => {
+    const { shim, fake, bridge } = setup();
+    const oldFetch = globalThis.fetch;
+    const oldApiKey = process.env.MCPSERVER_API_KEY;
+    const oldWorkspacePath = process.env.MCPSERVER_WORKSPACE_PATH;
+    const oldBaseUrl = process.env.MCPSERVER_BASE_URL;
+
+    process.env.MCPSERVER_API_KEY = 'test-api-key';
+    process.env.MCPSERVER_WORKSPACE_PATH = 'F:\\GitHub\\FeatureFlags';
+    process.env.MCPSERVER_BASE_URL = 'http://127.0.0.1:8765';
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      text: async () => '{"items":[],"totalCount":0}',
+    })) as unknown as typeof fetch;
+
+    try {
+      const response = await dispatchSessionTool(shim, bridge, 'session_query_history', {
+        agent: 'Cline',
+        limit: 5,
+      });
+
+      expect(fake.calls).toHaveLength(0);
+      expect(response.type).toBe('result');
+      expect(response.payload).toEqual({
+        result: { items: [], totalCount: 0 },
+        contentType: 'application/json',
+      });
+      const call = (globalThis.fetch as jest.Mock).mock.calls[0];
+      expect(String(call[0])).toBe('http://127.0.0.1:8765/mcpserver/sessionlog?agent=Cline&limit=5');
+      expect(call[1]).toEqual({
+        headers: {
+          'X-Api-Key': 'test-api-key',
+          'X-Workspace-Path': 'F:\\GitHub\\FeatureFlags',
+        },
+      });
+    } finally {
+      globalThis.fetch = oldFetch;
+      if (oldApiKey === undefined) delete process.env.MCPSERVER_API_KEY;
+      else process.env.MCPSERVER_API_KEY = oldApiKey;
+      if (oldWorkspacePath === undefined) delete process.env.MCPSERVER_WORKSPACE_PATH;
+      else process.env.MCPSERVER_WORKSPACE_PATH = oldWorkspacePath;
+      if (oldBaseUrl === undefined) delete process.env.MCPSERVER_BASE_URL;
+      else process.env.MCPSERVER_BASE_URL = oldBaseUrl;
+    }
   });
 
   test('session_close invokes SubmitAsync with final session status', async () => {

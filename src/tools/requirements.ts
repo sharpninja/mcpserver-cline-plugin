@@ -1,5 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ReplBridge, ReplResponse } from '../transport/repl-bridge.js';
+import { cacheDelete, cacheWrite } from '../cache/cache-manager.js';
 
 const STATUS_ENUM = ['pending', 'in_progress', 'completed', 'deferred'] as const;
 const PRIORITY_ENUM = ['critical', 'high', 'medium', 'low'] as const;
@@ -320,6 +321,22 @@ const typedMethodMap: Record<string, string> = {
   req_ingest_document: 'client.Requirements.IngestAsync',
 };
 
+const mutatingRequirementsTools = new Set([
+  'req_create_fr',
+  'req_update_fr',
+  'req_delete_fr',
+  'req_create_tr',
+  'req_update_tr',
+  'req_delete_tr',
+  'req_create_test',
+  'req_update_test',
+  'req_delete_test',
+  'req_create_mapping',
+  'req_delete_mapping',
+  'req_generate_document',
+  'req_ingest_document',
+]);
+
 export function canHandleRequirementsTool(name: string): boolean {
   return name in workflowMethodMap;
 }
@@ -534,6 +551,18 @@ function normalizeGenerateResponse(response: ReplResponse): ReplResponse {
   };
 }
 
+function isWikiGenerate(name: string, args: Record<string, unknown>): boolean {
+  return name === 'req_generate_document' && (typeof args.format === 'string' ? args.format : 'markdown') === 'wiki';
+}
+
+function hasZipContent(response: ReplResponse): boolean {
+  const result = (response.payload as { result?: Record<string, unknown> }).result;
+  if (!result) return false;
+  const contentType = typeof result.contentType === 'string' ? result.contentType : '';
+  const fileName = typeof result.fileName === 'string' ? result.fileName : '';
+  return typeof result.contentBase64 === 'string' && (/zip/i.test(contentType) || /\.zip$/i.test(fileName));
+}
+
 async function generateDocumentHttpFallback(
   args: Record<string, unknown>,
 ): Promise<ReplResponse | null> {
@@ -557,7 +586,16 @@ async function generateDocumentHttpFallback(
       'X-Workspace-Path': workspacePath,
     },
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    return {
+      type: 'error',
+      payload: {
+        code: 'http_error',
+        message: `requirements generate HTTP fallback returned HTTP ${response.status}${body ? `: ${body}` : ''}`,
+      },
+    };
+  }
 
   const contentType = response.headers.get('content-type')?.split(';')[0] || 'application/zip';
   const contentBase64 = Buffer.from(await response.arrayBuffer()).toString('base64');
@@ -584,17 +622,30 @@ async function invokeRequirementsTool(
   const workflowMethod = workflowMethodMap[name];
   if (!workflowMethod) throw new Error(`Unknown requirements tool: ${name}`);
 
+  if (isWikiGenerate(name, args)) {
+    const httpResponse = await generateDocumentHttpFallback(args);
+    if (httpResponse) return httpResponse;
+  }
+
   const workflowResponse = await bridge.invoke(workflowMethod, workflowParams(name, args));
   if (workflowResponse.type !== 'error' && !isEmptyResult(workflowResponse)) {
-    return workflowResponse;
+    if (isWikiGenerate(name, args)) {
+      const normalized = normalizeGenerateResponse(workflowResponse);
+      if (hasZipContent(normalized)) return normalized;
+    } else {
+      return workflowResponse;
+    }
   }
 
   const typedMethod = typedMethodMap[name];
   const typedResponse = await bridge.invoke(typedMethod, typedParams(name, args));
   if (typedResponse.type !== 'error' && !isEmptyResult(typedResponse)) {
-    return name === 'req_generate_document'
-      ? normalizeGenerateResponse(typedResponse)
-      : typedResponse;
+    if (name === 'req_generate_document') {
+      const normalized = normalizeGenerateResponse(typedResponse);
+      if (!isWikiGenerate(name, args) || hasZipContent(normalized)) return normalized;
+    } else {
+      return typedResponse;
+    }
   }
 
   if (name === 'req_generate_document') {
@@ -610,12 +661,23 @@ export async function handleRequirementsTool(
   args: Record<string, unknown>,
   bridge: ReplBridge,
 ) {
-  const response = await invokeRequirementsTool(name, args, bridge);
+  const method = workflowMethodMap[name];
+  const failsafePath = mutatingRequirementsTools.has(name) && method ? await cacheWrite(method, args) : undefined;
+  let response: ReplResponse;
+  try {
+    response = await invokeRequirementsTool(name, args, bridge);
+  } catch (error) {
+    const suffix = failsafePath ? ` Local failsafe saved: ${failsafePath}` : '';
+    throw new Error(`${error instanceof Error ? error.message : String(error)}${suffix}`);
+  }
 
   if (response.type === 'error') {
     const payload = response.payload as { message?: string; code?: string };
-    throw new Error(`${payload.code ?? 'error'}: ${payload.message ?? 'Unknown error'}`);
+    const suffix = failsafePath ? ` Local failsafe saved: ${failsafePath}` : '';
+    throw new Error(`${payload.code ?? 'error'}: ${payload.message ?? 'Unknown error'}${suffix}`);
   }
+
+  if (failsafePath) await cacheDelete(failsafePath);
 
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(response.payload, null, 2) }],

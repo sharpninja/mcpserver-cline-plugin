@@ -20,9 +20,18 @@ export interface FlushResult {
 }
 
 function getPendingDir(): string {
+  if (process.env.MCPSERVER_FAILSAFE_DIR) {
+    return process.env.MCPSERVER_FAILSAFE_DIR;
+  }
+
+  const workspacePath = process.env.MCPSERVER_WORKSPACE_PATH ?? process.env.MCP_WORKSPACE_PATH;
+  if (workspacePath) {
+    return path.join(workspacePath, '.mcpServer', 'failsafe', 'cline');
+  }
+
   const cacheDir =
     process.env.MCPSERVER_CACHE_DIR ??
-    path.join(path.dirname(new URL(import.meta.url).pathname), '../../cache');
+    path.join(process.cwd(), 'cache');
   return path.join(cacheDir, 'pending');
 }
 
@@ -31,7 +40,7 @@ function ensurePendingDir(pendingDir: string): void {
 }
 
 /**
- * Write a pending REPL command to cache/pending/<seq>-<slug>.yaml.
+ * Write a pending REPL command before attempting the live MCP call.
  * Mirrors cache_write() in lib/cache-manager.sh.
  */
 export async function cacheWrite(
@@ -59,6 +68,13 @@ export async function cacheWrite(
 
   fs.writeFileSync(filepath, yaml.dump(entry));
   return filepath;
+}
+
+/** Delete a pending command after the server acknowledges it. */
+export async function cacheDelete(filepath: string): Promise<void> {
+  if (filepath && fs.existsSync(filepath)) {
+    fs.unlinkSync(filepath);
+  }
 }
 
 /**
@@ -102,7 +118,11 @@ export async function cacheFlush(bridge: ReplBridge): Promise<FlushResult> {
     if ((entry.retryCount ?? 0) >= MAX_RETRIES) continue;
 
     try {
-      await bridge.invoke(entry.method, entry.params);
+      const response = await bridge.invoke(entry.method, entry.params);
+      if (response.type === 'error') {
+        const payload = response.payload as { message?: string; code?: string };
+        throw new Error(`${payload.code ?? 'error'}: ${payload.message ?? 'Unknown error'}`);
+      }
       fs.unlinkSync(file);
       flushed++;
     } catch {

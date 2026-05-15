@@ -1,5 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { ReplBridge } from '../transport/repl-bridge.js';
+import type { ReplBridge, ReplResponse } from '../transport/repl-bridge.js';
+import { cacheDelete, cacheWrite } from '../cache/cache-manager.js';
 
 export const todoTools: Tool[] = [
   {
@@ -166,8 +167,228 @@ const toolMethodMap: Record<string, string> = {
   todo_analyze_requirements: 'workflow.todo.analyzeRequirements',
 };
 
+const mutatingTodoTools = new Set(['todo_create', 'todo_update', 'todo_update_selected', 'todo_delete']);
+
 export function canHandleTodoTool(name: string): boolean {
   return name in toolMethodMap;
+}
+
+function stringArg(args: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  return '';
+}
+
+function unwrapRequest(args: Record<string, unknown>): Record<string, unknown> {
+  const request = args.request;
+  if (request && typeof request === 'object' && !Array.isArray(request)) {
+    return request as Record<string, unknown>;
+  }
+  return args;
+}
+
+function normalizeSection(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) return undefined;
+  return value.trim().toLowerCase() === 'ui' ? 'UI' : 'Backlog';
+}
+
+function stringList(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const values = value
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim());
+    return values.length > 0 ? values : undefined;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) return [value.trim()];
+  return undefined;
+}
+
+function implementationTasks(value: unknown): Array<{ task: string; done: boolean }> | undefined {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return [{ task: value.trim(), done: false }];
+  }
+
+  if (!Array.isArray(value)) return undefined;
+
+  const tasks = value
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item.trim().length > 0 ? { task: item.trim(), done: false } : undefined;
+      }
+
+      if (!item || typeof item !== 'object') return undefined;
+      const record = item as Record<string, unknown>;
+      const task = stringArg(record, 'task', 'title', 'description', 'text');
+      if (!task) return undefined;
+      return { task, done: record.done === true };
+    })
+    .filter((item): item is { task: string; done: boolean } => item !== undefined);
+
+  return tasks.length > 0 ? tasks : undefined;
+}
+
+function todoBody(args: Record<string, unknown>, includeId: boolean): Record<string, unknown> {
+  const source = unwrapRequest(args);
+  const body: Record<string, unknown> = {};
+
+  for (const key of [
+    'title',
+    'priority',
+    'estimate',
+    'note',
+    'completedDate',
+    'doneSummary',
+    'remaining',
+    'reference',
+    'phase',
+  ]) {
+    const value = source[key];
+    if (typeof value === 'string' && value.length > 0) body[key] = value;
+  }
+
+  if (includeId) {
+    const id = stringArg(source, 'id');
+    if (id) body.id = id;
+  }
+
+  const section = normalizeSection(source.section);
+  if (section) body.section = section;
+  if (typeof source.done === 'boolean') body.done = source.done;
+
+  for (const key of ['description', 'technicalDetails', 'dependsOn', 'functionalRequirements', 'technicalRequirements']) {
+    const values = stringList(source[key]);
+    if (values) body[key] = values;
+  }
+
+  const tasks = implementationTasks(source.implementationTasks);
+  if (tasks) body.implementationTasks = tasks;
+
+  return body;
+}
+
+async function parseHttpResponseBody(response: Response): Promise<{ bodyText: string; contentType: string; result: unknown }> {
+  const contentType = response.headers.get('content-type')?.split(';')[0] || 'application/json';
+  const bodyText = await response.text().catch(() => '');
+  let result: unknown = bodyText;
+  if (/json/i.test(contentType) && bodyText) {
+    try {
+      result = JSON.parse(bodyText);
+    } catch {
+      result = bodyText;
+    }
+  }
+
+  return { bodyText, contentType, result };
+}
+
+async function todoHttpFallback(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<ReplResponse | null> {
+  const fetchFn = globalThis.fetch;
+  const apiKey = process.env.MCPSERVER_API_KEY;
+  const workspacePath = process.env.MCPSERVER_WORKSPACE_PATH ?? process.env.MCP_WORKSPACE_PATH;
+  const baseUrl = process.env.MCPSERVER_BASE_URL ?? process.env.MCP_SERVER_URL;
+  if (typeof fetchFn !== 'function' || !apiKey || !workspacePath || !baseUrl) return null;
+
+  const source = unwrapRequest(args);
+  const id = stringArg(source, 'id');
+  const root = baseUrl.replace(/\/$/, '');
+  const headers: Record<string, string> = {
+    'X-Api-Key': apiKey,
+    'X-Workspace-Path': workspacePath,
+  };
+  let url: string;
+  let init: RequestInit = { headers };
+
+  switch (name) {
+    case 'todo_query': {
+      const queryUrl = new URL(`${root}/mcpserver/todo`);
+      const keyword = stringArg(source, 'keyword') || stringArg(source, 'title');
+      const priority = stringArg(source, 'priority');
+      const section = stringArg(source, 'section');
+      const queryId = stringArg(source, 'id');
+      const status = stringArg(source, 'status').toLowerCase();
+      let done = typeof source.done === 'boolean' ? String(source.done) : '';
+      if (!done && status) {
+        if (['open', 'active', 'pending', 'in_progress', 'in-progress'].includes(status)) done = 'false';
+        else if (['closed', 'complete', 'completed', 'done'].includes(status)) done = 'true';
+      }
+
+      if (keyword) queryUrl.searchParams.set('keyword', keyword);
+      if (priority) queryUrl.searchParams.set('priority', priority);
+      if (section) queryUrl.searchParams.set('section', section);
+      if (queryId) queryUrl.searchParams.set('id', queryId);
+      if (done) queryUrl.searchParams.set('done', done);
+      url = queryUrl.toString();
+      break;
+    }
+
+    case 'todo_get':
+      if (!id) return null;
+      url = `${root}/mcpserver/todo/${encodeURIComponent(id)}`;
+      break;
+
+    case 'todo_create':
+      url = `${root}/mcpserver/todo`;
+      init = {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(todoBody(source, true)),
+      };
+      break;
+
+    case 'todo_update':
+      if (!id) return null;
+      url = `${root}/mcpserver/todo/${encodeURIComponent(id)}`;
+      init = {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(todoBody(source, false)),
+      };
+      break;
+
+    case 'todo_delete':
+      if (!id) return null;
+      url = `${root}/mcpserver/todo/${encodeURIComponent(id)}`;
+      init = { method: 'DELETE', headers };
+      break;
+
+    case 'todo_analyze_requirements':
+      if (!id) return null;
+      url = `${root}/mcpserver/todo/${encodeURIComponent(id)}/requirements`;
+      init = {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(todoBody(source, false)),
+      };
+      break;
+
+    default:
+      return null;
+  }
+
+  const response = await fetchFn(url, init);
+  const parsed = await parseHttpResponseBody(response);
+  if (!response.ok) {
+    return {
+      type: 'error',
+      payload: {
+        code: 'http_error',
+        message: `TODO HTTP fallback returned HTTP ${response.status} for ${name}${parsed.bodyText ? `: ${parsed.bodyText}` : ''}`,
+      },
+    };
+  }
+
+  return {
+    type: 'result',
+    payload: {
+      result: parsed.result,
+      contentType: parsed.contentType,
+    },
+  };
 }
 
 export async function handleTodoTool(
@@ -178,12 +399,22 @@ export async function handleTodoTool(
   const method = toolMethodMap[name];
   if (!method) throw new Error(`Unknown todo tool: ${name}`);
 
-  const response = await bridge.invoke(method, args);
+  const failsafePath = mutatingTodoTools.has(name) ? await cacheWrite(method, args) : undefined;
+  let response: ReplResponse;
+  try {
+    response = (await todoHttpFallback(name, args)) ?? (await bridge.invoke(method, args));
+  } catch (error) {
+    const suffix = failsafePath ? ` Local failsafe saved: ${failsafePath}` : '';
+    throw new Error(`${error instanceof Error ? error.message : String(error)}${suffix}`);
+  }
 
   if (response.type === 'error') {
     const payload = response.payload as { message?: string; code?: string };
-    throw new Error(`${payload.code ?? 'error'}: ${payload.message ?? 'Unknown error'}`);
+    const suffix = failsafePath ? ` Local failsafe saved: ${failsafePath}` : '';
+    throw new Error(`${payload.code ?? 'error'}: ${payload.message ?? 'Unknown error'}${suffix}`);
   }
+
+  if (failsafePath) await cacheDelete(failsafePath);
 
   return {
     content: [

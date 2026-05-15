@@ -1,5 +1,8 @@
 import { requirementsTools, handleRequirementsTool } from '../src/tools/requirements.js';
 import type { ReplBridge, ReplResponse } from '../src/transport/repl-bridge.js';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 class FakeBridge {
   calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
@@ -54,6 +57,16 @@ describe('requirements tool schemas', () => {
 describe('handleRequirementsTool', () => {
   test('routes wiki generate arguments through workflow.requirements.generateDocument', async () => {
     const fake = new FakeBridge();
+    fake.nextResponse = {
+      type: 'result',
+      payload: {
+        result: {
+          contentBase64: 'UEsDBA==',
+          contentType: 'application/zip',
+          fileName: 'requirements-wiki-documents.zip',
+        },
+      },
+    };
     await handleRequirementsTool(
       'req_generate_document',
       { format: 'wiki', docType: 'all' },
@@ -111,6 +124,49 @@ describe('handleRequirementsTool', () => {
       { method: 'workflow.requirements.listFr', params: {} },
       { method: 'client.Requirements.ListFrAsync', params: {} },
     ]);
+  });
+
+  test('keeps local failsafe for mutating requirements when all routes fail', async () => {
+    const fake = new FakeBridge();
+    fake.responses = [
+      {
+        type: 'error',
+        payload: { code: 'offline', message: 'workflow unavailable' },
+      },
+      {
+        type: 'error',
+        payload: { code: 'offline', message: 'typed unavailable' },
+      },
+    ];
+    const oldFailsafeDir = process.env.MCPSERVER_FAILSAFE_DIR;
+    const failsafeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cline-req-failsafe-'));
+    process.env.MCPSERVER_FAILSAFE_DIR = failsafeDir;
+
+    try {
+      await expect(
+        handleRequirementsTool(
+          'req_create_fr',
+          {
+            id: 'FR-FAILSAFE-001',
+            title: 'Failsafe requirement',
+            description: 'Preserve failed requirement writes',
+            priority: 'high',
+            area: 'MCP',
+          },
+          asBridge(fake),
+        ),
+      ).rejects.toThrow(/Local failsafe saved:/);
+
+      const files = fs.readdirSync(failsafeDir).filter((file) => file.endsWith('.yaml'));
+      expect(files).toHaveLength(1);
+      const content = fs.readFileSync(path.join(failsafeDir, files[0]), 'utf8');
+      expect(content).toContain('workflow.requirements.createFr');
+      expect(content).toContain('FR-FAILSAFE-001');
+    } finally {
+      if (oldFailsafeDir === undefined) delete process.env.MCPSERVER_FAILSAFE_DIR;
+      else process.env.MCPSERVER_FAILSAFE_DIR = oldFailsafeDir;
+      fs.rmSync(failsafeDir, { recursive: true, force: true });
+    }
   });
 
   test('falls back to typed wiki generate when workflow rejects wiki format', async () => {
