@@ -1,6 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ReplBridge } from '../transport/repl-bridge.js';
-import { SessionShim, dispatchSessionTool } from './session-shim.js';
+import { SessionShim, dispatchSessionTool, type SessionState } from './session-shim.js';
 
 export const sessionTools: Tool[] = [
   {
@@ -165,6 +165,10 @@ const sessionShim = new SessionShim();
 
 export function canHandleSessionTool(name: string): boolean {
   return knownTools.has(name);
+}
+
+export function getSessionShimState(): SessionState | null {
+  return sessionShim.getState();
 }
 
 export async function handleSessionTool(

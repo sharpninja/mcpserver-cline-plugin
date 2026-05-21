@@ -16,6 +16,7 @@ import { todoTools, canHandleTodoTool, handleTodoTool } from './tools/todo.js';
 import { sessionTools, canHandleSessionTool, handleSessionTool } from './tools/session.js';
 import { requirementsTools, canHandleRequirementsTool, handleRequirementsTool } from './tools/requirements.js';
 import { graphragTools, canHandleGraphragTool, handleGraphragTool } from './tools/graphrag.js';
+import { pluginHelperTools, canHandlePluginHelperTool, handlePluginHelperTool } from './tools/plugin-helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,6 +25,7 @@ const allTools = [
   ...sessionTools,
   ...requirementsTools,
   ...graphragTools,
+  ...pluginHelperTools,
 ];
 
 const bridge = new ReplBridge();
@@ -40,6 +42,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
   const typedArgs = args as Record<string, unknown>;
+
+  if (canHandlePluginHelperTool(name)) return handlePluginHelperTool(name, typedArgs, bridge);
 
   // Ensure REPL is running before any tool call
   await bridge.ensure();
