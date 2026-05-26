@@ -8,7 +8,7 @@ version: 0.1.0
 
 Initialize an MCP Server workspace only after proving whether it is already registered.
 
-Use YAML request data for REPL calls. JSON is valid YAML, but keep examples in YAML so folded strings, arrays, and nested request objects keep their intended shape.
+Use Cline MCP tools for normal calls. If using direct REPL stdio for diagnosis, send a single-line JSON request envelope to `mcpserver-repl --agent-stdio`. JSON is valid YAML and avoids indentation/block-scalar ambiguity.
 
 ## Trust Source
 
@@ -30,7 +30,7 @@ If the target workspace has no marker or the marker is untrusted, use another tr
 
 ## MCP Bridge Example
 
-Send the same YAML-shaped payloads through the active Cline MCP bridge. If using the bundled REPL bridge directly for diagnosis, the target methods are `client.Workspace.ListAsync`, `client.Workspace.CreateAsync`, and `client.Workspace.InitAsync`.
+Send the same request shape through the active Cline MCP bridge. If using the bundled REPL bridge directly for diagnosis, send one single-line JSON request object and target `client.Workspace.ListAsync`, `client.Workspace.CreateAsync`, or `client.Workspace.InitAsync`.
 
 ```yaml
 type: request

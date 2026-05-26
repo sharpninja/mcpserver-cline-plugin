@@ -1,6 +1,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ReplBridge } from '../transport/repl-bridge.js';
 import { SessionShim, dispatchSessionTool, type SessionState } from './session-shim.js';
+import { validateToolArguments } from './schema-validation.js';
 
 export const sessionTools: Tool[] = [
   {
@@ -177,6 +178,7 @@ export async function handleSessionTool(
   bridge: ReplBridge,
 ) {
   if (!knownTools.has(name)) throw new Error(`Unknown session tool: ${name}`);
+  validateToolArguments(name, args, sessionTools);
 
   const response = await dispatchSessionTool(sessionShim, bridge, name, args);
 

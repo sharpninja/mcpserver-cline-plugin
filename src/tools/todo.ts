@@ -1,6 +1,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ReplBridge, ReplResponse } from '../transport/repl-bridge.js';
 import { cacheDelete, cacheWrite } from '../cache/cache-manager.js';
+import { validateToolArguments } from './schema-validation.js';
 
 export const todoTools: Tool[] = [
   {
@@ -398,6 +399,7 @@ export async function handleTodoTool(
 ) {
   const method = toolMethodMap[name];
   if (!method) throw new Error(`Unknown todo tool: ${name}`);
+  validateToolArguments(name, args, todoTools);
 
   const failsafePath = mutatingTodoTools.has(name) ? await cacheWrite(method, args) : undefined;
   let response: ReplResponse;

@@ -60,4 +60,45 @@ describe('ReplBridge timeout handling', () => {
 
     expect(kill).toHaveBeenCalledWith('SIGKILL');
   });
+
+  test('writes single-line JSON request envelopes to stdin', async () => {
+    const bridge = new ReplBridge();
+    const writes: string[] = [];
+
+    (bridge as unknown as { proc: unknown }).proc = {
+      exitCode: null,
+      killed: false,
+      stdin: { write: (value: string) => writes.push(value) },
+    };
+
+    const pending = bridge.invoke('workflow.todo.query', { id: 'MCP-TODO-001' });
+    await Promise.resolve();
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(/^\{"type":"request"/);
+    expect(writes[0]).not.toContain('---');
+    expect(writes[0].trim()).toBe(writes[0].slice(0, -1));
+
+    const envelope = JSON.parse(writes[0]) as {
+      payload: { requestId: string; method: string; params: Record<string, unknown> };
+    };
+    expect(envelope.payload.method).toBe('workflow.todo.query');
+    expect(envelope.payload.params).toEqual({ id: 'MCP-TODO-001' });
+
+    (
+      bridge as unknown as {
+        parseDocument: (raw: string) => void;
+      }
+    ).parseDocument(
+      JSON.stringify({
+        type: 'result',
+        payload: { requestId: envelope.payload.requestId, result: { ok: true } },
+      }),
+    );
+
+    await expect(pending).resolves.toEqual({
+      type: 'result',
+      payload: { requestId: envelope.payload.requestId, result: { ok: true } },
+    });
+  });
 });

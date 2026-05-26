@@ -1,5 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ReplBridge } from '../transport/repl-bridge.js';
+import { validateToolArguments } from './schema-validation.js';
 
 export const graphragTools: Tool[] = [
   // --- Status & Indexing ---
@@ -254,6 +255,7 @@ export async function handleGraphragTool(
 ) {
   const method = toolMethodMap[name];
   if (!method) throw new Error(`Unknown graphrag tool: ${name}`);
+  validateToolArguments(name, args, graphragTools);
 
   const response = await bridge.invoke(method, args);
 

@@ -55,6 +55,20 @@ describe('requirements tool schemas', () => {
 });
 
 describe('handleRequirementsTool', () => {
+  test('validates batch records before invoking the bridge', async () => {
+    const fake = new FakeBridge();
+
+    await expect(
+      handleRequirementsTool(
+        'req_create_fr_batch',
+        { records: [{ id: 'FR-MCP-001', title: 'Batch FR' }] },
+        asBridge(fake),
+      ),
+    ).rejects.toThrow(/schema_validation_failed/);
+
+    expect(fake.calls).toHaveLength(0);
+  });
+
   test('routes wiki generate arguments through workflow.requirements.generateDocument', async () => {
     const fake = new FakeBridge();
     fake.nextResponse = {

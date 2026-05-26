@@ -17,6 +17,7 @@
   "files": [
     "dist/",
     "lib/",
+    "schemas/",
     "skills/",
     "install.sh",
     "server.json"

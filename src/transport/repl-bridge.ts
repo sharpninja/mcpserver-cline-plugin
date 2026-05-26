@@ -17,7 +17,7 @@ interface PendingRequest {
 
 /**
  * Persistent bridge to mcpserver-repl --agent-stdio.
- * Multiplexes concurrent YAML-over-STDIO requests by requestId.
+ * Multiplexes concurrent JSON-over-STDIO requests by requestId.
  */
 export class ReplBridge {
   private proc: ChildProcess | null = null;
@@ -115,7 +115,7 @@ export class ReplBridge {
     try {
       doc = yaml.load(raw) as Record<string, unknown>;
     } catch {
-      process.stderr.write(`[repl] Failed to parse YAML: ${raw}\n`);
+      process.stderr.write(`[repl] Failed to parse REPL response: ${raw}\n`);
       return;
     }
 
@@ -146,7 +146,7 @@ export class ReplBridge {
   }
 
   /**
-   * Send a YAML envelope and await the matching result/error envelope.
+   * Send a single-line JSON envelope and await the matching result/error envelope.
    */
   async invoke(
     method: string,
@@ -177,8 +177,7 @@ export class ReplBridge {
         },
       };
 
-      const yamlStr = yaml.dump(envelope, { lineWidth: -1 });
-      this.proc!.stdin!.write(yamlStr + '---\n');
+      this.proc!.stdin!.write(`${JSON.stringify(envelope)}\n`);
     });
   }
 
@@ -211,8 +210,7 @@ export class ReplBridge {
         payload: { requestId, method, params },
       };
 
-      const yamlStr = yaml.dump(envelope, { lineWidth: -1 });
-      this.proc!.stdin!.write(yamlStr + '---\n');
+      this.proc!.stdin!.write(`${JSON.stringify(envelope)}\n`);
     });
   }
 

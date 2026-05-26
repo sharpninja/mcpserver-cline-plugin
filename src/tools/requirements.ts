@@ -1,6 +1,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ReplBridge, ReplResponse } from '../transport/repl-bridge.js';
 import { cacheDelete, cacheWrite } from '../cache/cache-manager.js';
+import { validateToolArguments } from './schema-validation.js';
 
 const STATUS_ENUM = ['pending', 'in_progress', 'completed', 'deferred'] as const;
 const PRIORITY_ENUM = ['critical', 'high', 'medium', 'low'] as const;
@@ -44,6 +45,34 @@ export const requirementsTools: Tool[] = [
     },
   },
   {
+    name: 'req_create_fr_batch',
+    description: 'Create multiple workspace-scoped functional requirements atomically from a records array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        records: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'FR ID (pattern: FR-AREA-###)' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              body: { type: 'string' },
+              priority: { type: 'string', enum: [...PRIORITY_ENUM] },
+              status: { type: 'string', enum: [...STATUS_ENUM] },
+              notes: { type: 'string' },
+            },
+            required: ['id', 'title'],
+            anyOf: [{ required: ['description'] }, { required: ['body'] }],
+          },
+        },
+      },
+      required: ['records'],
+    },
+  },
+  {
     name: 'req_update_fr',
     description: 'Modify an existing functional requirement.',
     inputSchema: {
@@ -57,6 +86,33 @@ export const requirementsTools: Tool[] = [
         notes: { type: 'string' },
       },
       required: ['id'],
+    },
+  },
+  {
+    name: 'req_update_fr_batch',
+    description: 'Update multiple workspace-scoped functional requirements atomically from a records array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        records: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'FR ID (pattern: FR-AREA-###)' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              body: { type: 'string' },
+              status: { type: 'string', enum: [...STATUS_ENUM] },
+              priority: { type: 'string', enum: [...PRIORITY_ENUM] },
+              notes: { type: 'string' },
+            },
+            required: ['id'],
+          },
+        },
+      },
+      required: ['records'],
     },
   },
   {
@@ -99,6 +155,34 @@ export const requirementsTools: Tool[] = [
     },
   },
   {
+    name: 'req_create_tr_batch',
+    description: 'Create multiple workspace-scoped technical requirements atomically from a records array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        records: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'TR ID (pattern: TR-AREA-SUBAREA-###)' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              body: { type: 'string' },
+              priority: { type: 'string', enum: [...PRIORITY_ENUM] },
+              status: { type: 'string', enum: [...STATUS_ENUM] },
+              notes: { type: 'string' },
+            },
+            required: ['id', 'title'],
+            anyOf: [{ required: ['description'] }, { required: ['body'] }],
+          },
+        },
+      },
+      required: ['records'],
+    },
+  },
+  {
     name: 'req_update_tr',
     description: 'Modify an existing technical requirement.',
     inputSchema: {
@@ -111,6 +195,33 @@ export const requirementsTools: Tool[] = [
         notes: { type: 'string' },
       },
       required: ['id'],
+    },
+  },
+  {
+    name: 'req_update_tr_batch',
+    description: 'Update multiple workspace-scoped technical requirements atomically from a records array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        records: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'TR ID (pattern: TR-AREA-SUBAREA-###)' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              body: { type: 'string' },
+              status: { type: 'string', enum: [...STATUS_ENUM] },
+              priority: { type: 'string', enum: [...PRIORITY_ENUM] },
+              notes: { type: 'string' },
+            },
+            required: ['id'],
+          },
+        },
+      },
+      required: ['records'],
     },
   },
   {
@@ -151,6 +262,35 @@ export const requirementsTools: Tool[] = [
     },
   },
   {
+    name: 'req_create_test_batch',
+    description: 'Create multiple workspace-scoped test requirements atomically from a records array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        records: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'TEST ID (pattern: TEST-AREA-###)' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              body: { type: 'string' },
+              condition: { type: 'string' },
+              priority: { type: 'string', enum: [...PRIORITY_ENUM] },
+              status: { type: 'string', enum: [...STATUS_ENUM] },
+              notes: { type: 'string' },
+            },
+            required: ['id', 'title'],
+            anyOf: [{ required: ['description'] }, { required: ['condition'] }, { required: ['body'] }],
+          },
+        },
+      },
+      required: ['records'],
+    },
+  },
+  {
     name: 'req_update_test',
     description: 'Modify an existing test requirement.',
     inputSchema: {
@@ -166,12 +306,99 @@ export const requirementsTools: Tool[] = [
     },
   },
   {
+    name: 'req_update_test_batch',
+    description: 'Update multiple workspace-scoped test requirements atomically from a records array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        records: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'TEST ID (pattern: TEST-AREA-###)' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              body: { type: 'string' },
+              condition: { type: 'string' },
+              status: { type: 'string', enum: [...STATUS_ENUM] },
+              priority: { type: 'string', enum: [...PRIORITY_ENUM] },
+              notes: { type: 'string' },
+            },
+            required: ['id'],
+          },
+        },
+      },
+      required: ['records'],
+    },
+  },
+  {
     name: 'req_delete_test',
     description: 'Remove a test requirement.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' } },
       required: ['id'],
+    },
+  },
+  {
+    name: 'req_create_batch',
+    description: 'Create mixed FR/TR/TEST requirements atomically from a records array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        records: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', enum: ['fr', 'tr', 'test'] },
+              id: { type: 'string' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              body: { type: 'string' },
+              condition: { type: 'string' },
+              priority: { type: 'string', enum: [...PRIORITY_ENUM] },
+              status: { type: 'string', enum: [...STATUS_ENUM] },
+              notes: { type: 'string' },
+            },
+            required: ['kind', 'id', 'title'],
+            anyOf: [{ required: ['description'] }, { required: ['body'] }, { required: ['condition'] }],
+          },
+        },
+      },
+      required: ['records'],
+    },
+  },
+  {
+    name: 'req_update_batch',
+    description: 'Update mixed FR/TR/TEST requirements atomically from a records array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        records: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', enum: ['fr', 'tr', 'test'] },
+              id: { type: 'string' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              body: { type: 'string' },
+              condition: { type: 'string' },
+              status: { type: 'string', enum: [...STATUS_ENUM] },
+              priority: { type: 'string', enum: [...PRIORITY_ENUM] },
+              notes: { type: 'string' },
+            },
+            required: ['kind', 'id'],
+          },
+        },
+      },
+      required: ['records'],
     },
   },
   // --- Mappings ---
@@ -283,16 +510,24 @@ const workflowMethodMap: Record<string, string> = {
   req_list_fr: 'workflow.requirements.listFr',
   req_get_fr: 'workflow.requirements.getFr',
   req_create_fr: 'workflow.requirements.createFr',
+  req_create_fr_batch: 'workflow.requirements.createFrBatch',
   req_update_fr: 'workflow.requirements.updateFr',
+  req_update_fr_batch: 'workflow.requirements.updateFrBatch',
   req_delete_fr: 'workflow.requirements.deleteFr',
   req_list_tr: 'workflow.requirements.listTr',
   req_create_tr: 'workflow.requirements.createTr',
+  req_create_tr_batch: 'workflow.requirements.createTrBatch',
   req_update_tr: 'workflow.requirements.updateTr',
+  req_update_tr_batch: 'workflow.requirements.updateTrBatch',
   req_delete_tr: 'workflow.requirements.deleteTr',
   req_list_test: 'workflow.requirements.listTest',
   req_create_test: 'workflow.requirements.createTest',
+  req_create_test_batch: 'workflow.requirements.createTestBatch',
   req_update_test: 'workflow.requirements.updateTest',
+  req_update_test_batch: 'workflow.requirements.updateTestBatch',
   req_delete_test: 'workflow.requirements.deleteTest',
+  req_create_batch: 'workflow.requirements.createBatch',
+  req_update_batch: 'workflow.requirements.updateBatch',
   req_list_mappings: 'workflow.requirements.listMappings',
   req_create_mapping: 'workflow.requirements.createMapping',
   req_delete_mapping: 'workflow.requirements.deleteMapping',
@@ -304,16 +539,24 @@ const typedMethodMap: Record<string, string> = {
   req_list_fr: 'client.Requirements.ListFrAsync',
   req_get_fr: 'client.Requirements.GetFrAsync',
   req_create_fr: 'client.Requirements.CreateFrAsync',
+  req_create_fr_batch: 'client.Requirements.CreateFrBatchAsync',
   req_update_fr: 'client.Requirements.UpdateFrAsync',
+  req_update_fr_batch: 'client.Requirements.UpdateFrBatchAsync',
   req_delete_fr: 'client.Requirements.DeleteFrAsync',
   req_list_tr: 'client.Requirements.ListTrAsync',
   req_create_tr: 'client.Requirements.CreateTrAsync',
+  req_create_tr_batch: 'client.Requirements.CreateTrBatchAsync',
   req_update_tr: 'client.Requirements.UpdateTrAsync',
+  req_update_tr_batch: 'client.Requirements.UpdateTrBatchAsync',
   req_delete_tr: 'client.Requirements.DeleteTrAsync',
   req_list_test: 'client.Requirements.ListTestAsync',
   req_create_test: 'client.Requirements.CreateTestAsync',
+  req_create_test_batch: 'client.Requirements.CreateTestBatchAsync',
   req_update_test: 'client.Requirements.UpdateTestAsync',
+  req_update_test_batch: 'client.Requirements.UpdateTestBatchAsync',
   req_delete_test: 'client.Requirements.DeleteTestAsync',
+  req_create_batch: 'client.Requirements.CreateBatchAsync',
+  req_update_batch: 'client.Requirements.UpdateBatchAsync',
   req_list_mappings: 'client.Requirements.ListMappingsAsync',
   req_create_mapping: 'client.Requirements.UpsertMappingAsync',
   req_delete_mapping: 'client.Requirements.DeleteMappingAsync',
@@ -323,14 +566,22 @@ const typedMethodMap: Record<string, string> = {
 
 const mutatingRequirementsTools = new Set([
   'req_create_fr',
+  'req_create_fr_batch',
   'req_update_fr',
+  'req_update_fr_batch',
   'req_delete_fr',
   'req_create_tr',
+  'req_create_tr_batch',
   'req_update_tr',
+  'req_update_tr_batch',
   'req_delete_tr',
   'req_create_test',
+  'req_create_test_batch',
   'req_update_test',
+  'req_update_test_batch',
   'req_delete_test',
+  'req_create_batch',
+  'req_update_batch',
   'req_create_mapping',
   'req_delete_mapping',
   'req_generate_document',
@@ -401,6 +652,10 @@ function requestParam(request: Record<string, unknown>): Record<string, unknown>
   return { request };
 }
 
+function batchRequestParam(args: Record<string, unknown>): Record<string, unknown> {
+  return requestParam({ records: Array.isArray(args.records) ? args.records : [] });
+}
+
 function listParam(
   args: Record<string, unknown>,
   pluralKey: string,
@@ -427,6 +682,16 @@ function typedParams(name: string, args: Record<string, unknown>): Record<string
     case 'req_delete_tr':
     case 'req_delete_test':
       return idParam(args);
+
+    case 'req_create_fr_batch':
+    case 'req_update_fr_batch':
+    case 'req_create_tr_batch':
+    case 'req_update_tr_batch':
+    case 'req_create_test_batch':
+    case 'req_update_test_batch':
+    case 'req_create_batch':
+    case 'req_update_batch':
+      return batchRequestParam(args);
 
     case 'req_create_fr':
     case 'req_create_tr':
@@ -662,6 +927,7 @@ export async function handleRequirementsTool(
   bridge: ReplBridge,
 ) {
   const method = workflowMethodMap[name];
+  validateToolArguments(name, args, requirementsTools);
   const failsafePath = mutatingRequirementsTools.has(name) && method ? await cacheWrite(method, args) : undefined;
   let response: ReplResponse;
   try {
