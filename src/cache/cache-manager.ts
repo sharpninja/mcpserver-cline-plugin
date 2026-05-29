@@ -19,6 +19,18 @@ export interface FlushResult {
   pending: number;
 }
 
+/**
+ * Returns Base64URL encoding of workspacePath, matching V4CacheManager.GetScopedCachePath
+ * in @sharpninja/mcpserver-agent-core (TR-MCP-AGENT-PARITY-013).
+ */
+function getWorkspaceKeyV4(workspacePath: string): string {
+  return Buffer.from(workspacePath)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
 function getPendingDir(): string {
   if (process.env.MCPSERVER_FAILSAFE_DIR) {
     return process.env.MCPSERVER_FAILSAFE_DIR;
@@ -26,7 +38,8 @@ function getPendingDir(): string {
 
   const workspacePath = process.env.MCPSERVER_WORKSPACE_PATH ?? process.env.MCP_WORKSPACE_PATH;
   if (workspacePath) {
-    return path.join(workspacePath, '.mcpServer', 'failsafe', 'cline');
+    const key = getWorkspaceKeyV4(workspacePath);
+    return path.join(workspacePath, '.mcpServer', 'failsafe', 'cline', 'workspaces', key);
   }
 
   const cacheDir =
