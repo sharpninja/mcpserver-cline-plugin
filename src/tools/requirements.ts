@@ -2,6 +2,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ReplBridge, ReplResponse } from '../transport/repl-bridge.js';
 import { cacheDelete, cacheWrite } from '../cache/cache-manager.js';
 import { validateToolArguments } from './schema-validation.js';
+import * as yaml from 'js-yaml';
 
 const STATUS_ENUM = ['pending', 'in_progress', 'completed', 'deferred'] as const;
 const PRIORITY_ENUM = ['critical', 'high', 'medium', 'low'] as const;
@@ -605,6 +606,17 @@ const typedMethodMap: Record<string, string> = {
 
 const workflowOnlyRequirementsTools = new Set(['req_copy_acceptance_criteria_from_todo']);
 
+const batchRequirementsTools = new Set([
+  'req_create_fr_batch',
+  'req_update_fr_batch',
+  'req_create_tr_batch',
+  'req_update_tr_batch',
+  'req_create_test_batch',
+  'req_update_test_batch',
+  'req_create_batch',
+  'req_update_batch',
+]);
+
 const mutatingRequirementsTools = new Set([
   'req_create_fr',
   'req_create_fr_batch',
@@ -692,6 +704,32 @@ function idParam(args: Record<string, unknown>): Record<string, unknown> {
 
 function requestParam(request: Record<string, unknown>): Record<string, unknown> {
   return { request };
+}
+
+function parseRecordsValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || value.trim().length === 0) return value;
+
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(value);
+  } catch {
+    return value;
+  }
+
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const records = (parsed as { records?: unknown }).records;
+    if (Array.isArray(records)) return records;
+  }
+
+  return value;
+}
+
+function normalizeRequirementArgs(name: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (!batchRequirementsTools.has(name)) return args;
+  const records = parseRecordsValue(args.records);
+  return records === args.records ? args : { ...args, records };
 }
 
 function batchRequestParam(args: Record<string, unknown>): Record<string, unknown> {
@@ -984,11 +1022,12 @@ export async function handleRequirementsTool(
   bridge: ReplBridge,
 ) {
   const method = workflowMethodMap[name];
-  validateToolArguments(name, args, requirementsTools);
-  const failsafePath = mutatingRequirementsTools.has(name) && method ? await cacheWrite(method, args) : undefined;
+  const normalizedArgs = normalizeRequirementArgs(name, args);
+  validateToolArguments(name, normalizedArgs, requirementsTools);
+  const failsafePath = mutatingRequirementsTools.has(name) && method ? await cacheWrite(method, normalizedArgs) : undefined;
   let response: ReplResponse;
   try {
-    response = await invokeRequirementsTool(name, args, bridge);
+    response = await invokeRequirementsTool(name, normalizedArgs, bridge);
   } catch (error) {
     const suffix = failsafePath ? ` Local failsafe saved: ${failsafePath}` : '';
     throw new Error(`${error instanceof Error ? error.message : String(error)}${suffix}`);

@@ -335,6 +335,82 @@ describe('handleRequirementsTool', () => {
     });
   });
 
+  test('req_update_fr_batch parses PowerShell YAML string records before invoking the bridge', async () => {
+    const fake = new FakeBridge();
+    fake.nextResponse = {
+      type: 'result',
+      payload: { result: { items: [] } },
+    };
+
+    const recordsYaml = `records:
+- id: FR-LOC-001
+  title: Monitor device location
+  description: The system SHALL monitor the device location while tracking is enabled.
+  priority: high
+  status: pending
+  area: LOC
+  acceptanceCriteria:
+  - id: FR-LOC-001-AC001
+    text: Demonstrates behavior for FR-LOC-001.
+    isSatisfied: false`;
+
+    await handleRequirementsTool('req_update_fr_batch', { records: recordsYaml }, asBridge(fake));
+
+    expect(fake.calls).toEqual([
+      {
+        method: 'workflow.requirements.updateFrBatch',
+        params: {
+          records: [
+            {
+              id: 'FR-LOC-001',
+              title: 'Monitor device location',
+              description: 'The system SHALL monitor the device location while tracking is enabled.',
+              priority: 'high',
+              status: 'pending',
+              area: 'LOC',
+              acceptanceCriteria: [
+                {
+                  id: 'FR-LOC-001-AC001',
+                  text: 'Demonstrates behavior for FR-LOC-001.',
+                  isSatisfied: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  test('req_create_batch parses inline JSON array records before invoking the bridge', async () => {
+    const fake = new FakeBridge();
+    fake.nextResponse = {
+      type: 'result',
+      payload: { result: { items: [] } },
+    };
+
+    const recordsJson = '[{"kind":"fr","id":"FR-LOC-001","title":"Monitor device location","description":"The system SHALL monitor the device location while tracking is enabled.","priority":"high","status":"pending","area":"LOC","acceptanceCriteria":[{"id":"FR-LOC-001-AC001","text":"Demonstrates behavior for FR-LOC-001.","isSatisfied":false}]}]';
+
+    await handleRequirementsTool('req_create_batch', { records: recordsJson }, asBridge(fake));
+
+    expect(fake.calls[0]).toEqual({
+      method: 'workflow.requirements.createBatch',
+      params: {
+        records: [
+          expect.objectContaining({
+            kind: 'fr',
+            id: 'FR-LOC-001',
+            acceptanceCriteria: [
+              expect.objectContaining({
+                id: 'FR-LOC-001-AC001',
+                isSatisfied: false,
+              }),
+            ],
+          }),
+        ],
+      },
+    });
+  });
 
   test('req_copy_acceptance_criteria_from_todo maps to the workflow method', async () => {
     const fake = new FakeBridge();
