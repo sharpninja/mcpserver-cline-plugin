@@ -1183,3 +1183,23 @@ Conclusion:
 5. Add the equivalent Cline Jest regression around `src/transport/repl-bridge.ts` and `src/tools/session-shim.ts`.
 6. Build the cross-plugin harness and run the parity scenario against all four local repos.
 7. Only after automated parity passes, run manual host integration validation.
+## 2026-06-03 REQAC Plugin Rollout Evidence
+
+Scope: `FR-MCP-REQACPLUGIN-001`, `TR-MCP-REQACPLUGIN-001`, and `TEST-MCP-REQACPLUGIN-TS`.
+
+Changes under validation:
+- FR/TR/TEST create and update tools expose and forward `acceptanceCriteria` arrays.
+- Batch-capable tools preserve `acceptanceCriteria` inside `records` arrays where the plugin exposes batch commands.
+- `req_copy_acceptance_criteria_from_todo` maps to `workflow.requirements.copyAcceptanceCriteriaFromTodo` with `{ kind, id, todoId }`.
+
+Commands run:
+- `npm run build` passed in `mcpserver-cline-plugin`, `mcpserver-cline-v2-plugin`, and `mcpserver-opencode-plugin`.
+- `npm test -- --runTestsByPath tests/requirements.test.ts` passed in `mcpserver-cline-plugin`.
+- `npm test -- --runTestsByPath tests/requirements.test.ts` passed in `mcpserver-cline-v2-plugin`.
+- `npm test -- --runTestsByPath tests/complex-tools.test.ts` passed all tests in `mcpserver-opencode-plugin`, but returned nonzero because the repo applies global coverage thresholds to path-limited runs.
+- Full `npm test` passed in `mcpserver-cline-v2-plugin`.
+
+Residual validation note:
+- Full `npm test` in `mcpserver-cline-plugin` fails in an existing TODO HTTP fallback schema test, not in `requirements.test.ts`.
+- Full `npm test` in `mcpserver-opencode-plugin` fails in existing `plugin.test.ts` timeout/error-path cases and global branch/function coverage thresholds, while the requirements copy and acceptanceCriteria tests pass.
+

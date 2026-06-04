@@ -221,6 +221,141 @@ describe('handleRequirementsTool', () => {
     ]);
   });
 
+  test('req_create_fr forwards acceptanceCriteria into the request payload', async () => {
+    const fake = new FakeBridge();
+    fake.responses = [
+      {
+        type: 'error',
+        payload: { code: 'method_not_found', message: 'workflow missing' },
+      },
+      {
+        type: 'result',
+        payload: { result: { id: 'FR-AC-001' } },
+      },
+    ];
+
+    const acceptanceCriteria = [
+      { text: 'criterion one', isSatisfied: false },
+      { id: 'AC-2', text: 'criterion two', isSatisfied: true, evidence: 'covered by test X' },
+    ];
+
+    await handleRequirementsTool(
+      'req_create_fr',
+      {
+        id: 'FR-AC-001',
+        title: 'FR with acceptance criteria',
+        description: 'Body of FR',
+        priority: 'high',
+        area: 'MCP',
+        acceptanceCriteria,
+      },
+      asBridge(fake),
+    );
+
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[1]).toEqual({
+      method: 'client.Requirements.CreateFrAsync',
+      params: {
+        request: {
+          id: 'FR-AC-001',
+          title: 'FR with acceptance criteria',
+          body: 'Body of FR',
+          acceptanceCriteria,
+        },
+      },
+    });
+  });
+
+  test('req_update_test forwards acceptanceCriteria into the request payload', async () => {
+    const fake = new FakeBridge();
+    fake.responses = [
+      {
+        type: 'error',
+        payload: { code: 'method_not_found', message: 'workflow missing' },
+      },
+      {
+        type: 'result',
+        payload: { result: { id: 'TEST-AC-007' } },
+      },
+    ];
+
+    const acceptanceCriteria = [{ text: 'verifies update behavior' }];
+
+    await handleRequirementsTool(
+      'req_update_test',
+      {
+        id: 'TEST-AC-007',
+        description: 'Updated condition for test',
+        acceptanceCriteria,
+      },
+      asBridge(fake),
+    );
+
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[1]).toEqual({
+      method: 'client.Requirements.UpdateTestAsync',
+      params: {
+        id: 'TEST-AC-007',
+        request: {
+          condition: 'Updated condition for test',
+          acceptanceCriteria,
+        },
+      },
+    });
+  });
+
+  test('req_create_fr_batch forwards acceptanceCriteria inside each record', async () => {
+    const fake = new FakeBridge();
+    fake.nextResponse = {
+      type: 'result',
+      payload: { result: { items: [] } },
+    };
+
+    const records = [
+      {
+        id: 'FR-AC-010',
+        title: 'Batch FR one',
+        description: 'first',
+        acceptanceCriteria: [{ text: 'AC for first' }],
+      },
+      {
+        id: 'FR-AC-011',
+        title: 'Batch FR two',
+        body: 'second body',
+        acceptanceCriteria: [{ text: 'AC for second', isSatisfied: true }],
+      },
+    ];
+
+    await handleRequirementsTool('req_create_fr_batch', { records }, asBridge(fake));
+
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]).toEqual({
+      method: 'workflow.requirements.createFrBatch',
+      params: { records },
+    });
+  });
+
+
+  test('req_copy_acceptance_criteria_from_todo maps to the workflow method', async () => {
+    const fake = new FakeBridge();
+    fake.nextResponse = {
+      type: 'result',
+      payload: { result: { copied: true } },
+    };
+
+    await handleRequirementsTool(
+      'req_copy_acceptance_criteria_from_todo',
+      { kind: 'fr', id: 'FR-AC-001', todoId: 'PLAN-MCP-001' },
+      asBridge(fake),
+    );
+
+    expect(fake.calls).toEqual([
+      {
+        method: 'workflow.requirements.copyAcceptanceCriteriaFromTodo',
+        params: { kind: 'fr', id: 'FR-AC-001', todoId: 'PLAN-MCP-001' },
+      },
+    ]);
+  });
   test('uses HTTP wiki fallback when typed generate returns empty result', async () => {
     const fake = new FakeBridge();
     fake.responses = [

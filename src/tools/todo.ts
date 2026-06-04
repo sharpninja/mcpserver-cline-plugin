@@ -54,7 +54,7 @@ export const todoTools: Tool[] = [
         description: { type: 'array', items: { type: 'string' }, description: 'Bullet-point description' },
         implementationTasks: {
           type: 'array',
-          items: { type: 'object', properties: { task: { type: 'string' }, done: { type: 'boolean' } }, required: ['task'] },
+          items: { oneOf: [{ type: 'string' }, { type: 'object', properties: { task: { type: 'string' }, done: { type: 'boolean' } }, required: ['task'] }] },
           description: 'Sub-tasks with completion status',
         },
         dependsOn: { type: 'array', items: { type: 'string' }, description: 'TODO IDs this depends on' },
@@ -77,7 +77,7 @@ export const todoTools: Tool[] = [
         doneSummary: { type: 'string', description: 'Summary of completed work (required when done:true)' },
         implementationTasks: {
           type: 'array',
-          items: { type: 'object', properties: { task: { type: 'string' }, done: { type: 'boolean' } }, required: ['task'] },
+          items: { oneOf: [{ type: 'string' }, { type: 'object', properties: { task: { type: 'string' }, done: { type: 'boolean' } }, required: ['task'] }] },
         },
         technicalDetails: { type: 'string' },
       },
@@ -93,7 +93,7 @@ export const todoTools: Tool[] = [
         remaining: { type: 'string' },
         done: { type: 'boolean' },
         doneSummary: { type: 'string' },
-        implementationTasks: { type: 'array', items: { type: 'object', properties: { task: { type: 'string' }, done: { type: 'boolean' } }, required: ['task'] } },
+        implementationTasks: { type: 'array', items: { oneOf: [{ type: 'string' }, { type: 'object', properties: { task: { type: 'string' }, done: { type: 'boolean' } }, required: ['task'] }] } },
       },
     },
   },
@@ -399,12 +399,13 @@ export async function handleTodoTool(
 ) {
   const method = toolMethodMap[name];
   if (!method) throw new Error(`Unknown todo tool: ${name}`);
-  validateToolArguments(name, args, todoTools);
+  const normalizedArgs = unwrapRequest(args);
+  validateToolArguments(name, normalizedArgs, todoTools);
 
-  const failsafePath = mutatingTodoTools.has(name) ? await cacheWrite(method, args) : undefined;
+  const failsafePath = mutatingTodoTools.has(name) ? await cacheWrite(method, normalizedArgs) : undefined;
   let response: ReplResponse;
   try {
-    response = (await todoHttpFallback(name, args)) ?? (await bridge.invoke(method, args));
+    response = (await todoHttpFallback(name, normalizedArgs)) ?? (await bridge.invoke(method, normalizedArgs));
   } catch (error) {
     const suffix = failsafePath ? ` Local failsafe saved: ${failsafePath}` : '';
     throw new Error(`${error instanceof Error ? error.message : String(error)}${suffix}`);
