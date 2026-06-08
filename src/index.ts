@@ -14,6 +14,7 @@ import { fullBootstrap } from './discovery/marker-resolver.js';
 import { cacheFlush } from './cache/cache-manager.js';
 import { todoTools, canHandleTodoTool, handleTodoTool } from './tools/todo.js';
 import { sessionTools, canHandleSessionTool, handleSessionTool } from './tools/session.js';
+import { memoryTools, canHandleMemoryTool, handleMemoryTool } from './tools/memory.js';
 import { requirementsTools, canHandleRequirementsTool, handleRequirementsTool } from './tools/requirements.js';
 import { graphragTools, canHandleGraphragTool, handleGraphragTool } from './tools/graphrag.js';
 import { pluginHelperTools, canHandlePluginHelperTool, handlePluginHelperTool } from './tools/plugin-helpers.js';
@@ -23,6 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const allTools = [
   ...todoTools,
   ...sessionTools,
+  ...memoryTools,
   ...requirementsTools,
   ...graphragTools,
   ...pluginHelperTools,
@@ -50,6 +52,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   if (canHandleTodoTool(name)) return handleTodoTool(name, typedArgs, bridge);
   if (canHandleSessionTool(name)) return handleSessionTool(name, typedArgs, bridge);
+  if (canHandleMemoryTool(name)) return handleMemoryTool(name, typedArgs, bridge);
   if (canHandleRequirementsTool(name)) return handleRequirementsTool(name, typedArgs, bridge);
   if (canHandleGraphragTool(name)) return handleGraphragTool(name, typedArgs, bridge);
 

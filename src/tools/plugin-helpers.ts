@@ -8,6 +8,7 @@ import type { ReplBridge } from '../transport/repl-bridge.js';
 import { graphragTools } from './graphrag.js';
 import { requirementsTools } from './requirements.js';
 import { getSessionShimState, handleSessionTool, sessionTools } from './session.js';
+import { memoryTools } from './memory.js';
 import { todoTools } from './todo.js';
 
 const STATUS_TOOL_NAMES = ['mcp_cline_status', 'mcp_status', 'plugin_status'];
@@ -210,6 +211,7 @@ export async function handlePluginHelperTool(
       namespaces: [
         'workflow.sessionlog',
         'workflow.todo',
+        'workflow.memory',
         'workflow.requirements',
         'workflow.graphrag',
         'client',
@@ -217,6 +219,7 @@ export async function handlePluginHelperTool(
       tools: {
         session: toolNames(sessionTools),
         todo: toolNames(todoTools),
+        memory: toolNames(memoryTools),
         requirements: toolNames(requirementsTools),
         graphrag: toolNames(graphragTools),
         helpers: helperToolNames,
