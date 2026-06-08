@@ -304,6 +304,79 @@ describe('handleRequirementsTool', () => {
     });
   });
 
+  test('req_update_fr forwards caller acceptanceCriteria on criteria-only update', async () => {
+    const fake = new FakeBridge();
+    fake.responses = [
+      {
+        type: 'error',
+        payload: { code: 'method_not_found', message: 'workflow missing' },
+      },
+      {
+        type: 'result',
+        payload: { result: { id: 'FR-AC-201' } },
+      },
+    ];
+
+    const acceptanceCriteria = [{ id: 'caller-ac-1', text: 'caller criterion text', isSatisfied: false }];
+
+    await handleRequirementsTool(
+      'req_update_fr',
+      {
+        id: 'FR-AC-201',
+        acceptanceCriteria,
+      },
+      asBridge(fake),
+    );
+
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[1]).toEqual({
+      method: 'client.Requirements.UpdateFrAsync',
+      params: {
+        id: 'FR-AC-201',
+        request: {
+          title: '',
+          body: '',
+          acceptanceCriteria,
+        },
+      },
+    });
+  });
+
+  test('req_update_fr fails when supplied acceptanceCriteria returns empty', async () => {
+    const fake = new FakeBridge();
+    fake.responses = [
+      {
+        type: 'error',
+        payload: { code: 'method_not_found', message: 'workflow missing' },
+      },
+      {
+        type: 'result',
+        payload: { result: { success: true, item: { id: 'FR-AC-202', acceptanceCriteria: [] } } },
+      },
+    ];
+
+    const oldFailsafeDir = process.env.MCPSERVER_FAILSAFE_DIR;
+    const failsafeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cline-req-ac-failsafe-'));
+    process.env.MCPSERVER_FAILSAFE_DIR = failsafeDir;
+
+    try {
+      await expect(
+        handleRequirementsTool(
+          'req_update_fr',
+          {
+            id: 'FR-AC-202',
+            acceptanceCriteria: [{ id: 'caller-ac-1', text: 'caller criterion text' }],
+          },
+          asBridge(fake),
+        ),
+      ).rejects.toThrow(/requirements_acceptance_criteria_not_captured/);
+    } finally {
+      if (oldFailsafeDir === undefined) delete process.env.MCPSERVER_FAILSAFE_DIR;
+      else process.env.MCPSERVER_FAILSAFE_DIR = oldFailsafeDir;
+      fs.rmSync(failsafeDir, { recursive: true, force: true });
+    }
+  });
+
   test('req_create_fr_batch forwards acceptanceCriteria inside each record', async () => {
     const fake = new FakeBridge();
     fake.nextResponse = {
