@@ -8,11 +8,14 @@ import {
   pluginHelperTools,
 } from '../src/tools/plugin-helpers.js';
 import {
-  __resetSessionShimForTests,
   getSessionShimState,
   handleSessionTool,
-} from '../src/tools/session.js';
-import type { ReplBridge, ReplResponse } from '../src/transport/repl-bridge.js';
+  type ReplBridge,
+  type ReplResponse,
+} from '@sharpninja/mcpserver-plugin-core';
+// __resetSessionShimForTests is a test-only helper that the package does not
+// re-export from its root; reach it through the published dist subpath.
+import { __resetSessionShimForTests } from '@sharpninja/mcpserver-plugin-core/dist/tools/session.js';
 
 class FakeBridge {
   calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
@@ -191,9 +194,10 @@ workspacePath: '${workspace.replace(/\\/g, '\\\\')}'
       await handlePluginHelperTool('final_response', { response: 'completed by helper' }, asBridge(fake));
 
       expect(fake.calls).toHaveLength(1);
-      expect(fake.calls[0].method).toBe('client.SessionLog.SubmitAsync');
-      const payload = fake.calls[0].params as { sessionLog: { turns: Record<string, unknown>[] } };
-      expect(payload.sessionLog.turns[0]).toMatchObject({
+      expect(fake.calls[0].method).toBe('client.SessionLog.UpsertTurnAsync');
+      const payload = fake.calls[0].params as { agent: string; sessionId: string; turn: Record<string, unknown> };
+      expect(payload).toMatchObject({ agent: 'Cline', sessionId: 'Cline-final-001' });
+      expect(payload.turn).toMatchObject({
         requestId: 'req-final-001',
         status: 'completed',
         response: 'completed by helper',

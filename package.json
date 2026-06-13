@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@sharpninja/mcpserver-plugin-core": "file:vendor/sharpninja-mcpserver-plugin-core-0.1.0.tgz",
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {

@@ -1,15 +1,21 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
-import { cacheStatus } from '../cache/cache-manager.js';
-import { findMarkerFile, parseMarkerField, verifySignature } from '../discovery/marker-resolver.js';
-import type { ReplBridge } from '../transport/repl-bridge.js';
-import { graphragTools } from './graphrag.js';
-import { requirementsTools } from './requirements.js';
-import { getSessionShimState, handleSessionTool, sessionTools } from './session.js';
-import { memoryTools } from './memory.js';
-import { todoTools } from './todo.js';
+import {
+  cacheStatus,
+  findMarkerFile,
+  parseMarkerField,
+  getSessionShimState,
+  handleSessionTool,
+  sessionTools,
+  todoTools,
+  memoryTools,
+  requirementsTools,
+  graphragTools,
+  type ReplBridge,
+} from '@sharpninja/mcpserver-plugin-core';
 
 const STATUS_TOOL_NAMES = ['mcp_cline_status', 'mcp_status', 'plugin_status'];
 const FINAL_RESPONSE_TOOL_NAMES = ['final_response', 'mcp_final_response', 'session_final_response'];
@@ -65,6 +71,97 @@ function readPackageMetadata(): PackageMetadata {
   };
 }
 
+/**
+ * Marker trust display for mcp_cline_status. The core package exports
+ * findMarkerFile / parseMarkerField but intentionally keeps verifySignature
+ * (and its private canonicalization helpers) internal, so this host-side
+ * verifier mirrors core's verify_signature() canonical-payload layout
+ * (marker-v1) purely for the status read-out. It is the only marker logic
+ * that stays in the cline v1 glue.
+ */
+function parseMarkerNestedField(markerFile: string, sectionName: string, fieldName: string): string | null {
+  const lines = fs.readFileSync(markerFile, 'utf8').split('\n');
+  let inSection = false;
+  for (const line of lines) {
+    if (new RegExp(`^${sectionName}:`).test(line)) {
+      inSection = true;
+      continue;
+    }
+    if (inSection && /^[^\s]/.test(line)) break;
+    if (inSection) {
+      const m = line.match(new RegExp(`^\\s+${fieldName}:\\s*(.*)`));
+      if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  return null;
+}
+
+function buildCanonicalPayload(markerFile: string): string {
+  const get = (f: string) => parseMarkerField(markerFile, f) ?? '';
+  const lines: string[] = [
+    'canonicalization=marker-v1',
+    `port=${get('port')}`,
+    `baseUrl=${get('baseUrl')}`,
+    `apiKey=${get('apiKey')}`,
+    `workspace=${get('workspace')}`,
+    `workspacePath=${get('workspacePath')}`,
+    `pid=${get('pid')}`,
+    `startedAt=${get('startedAt')}`,
+    `markerWrittenAtUtc=${get('markerWrittenAtUtc')}`,
+    `serverStartedAtUtc=${get('serverStartedAtUtc')}`,
+  ];
+
+  const rawLines = fs.readFileSync(markerFile, 'utf8').split('\n');
+  let inEndpoints = false;
+  for (const line of rawLines) {
+    if (/^endpoints:/.test(line)) {
+      inEndpoints = true;
+      continue;
+    }
+    if (inEndpoints && /^[^\s]/.test(line)) break;
+    if (inEndpoints) {
+      const m = line.match(/^\s+([^:]+):\s*(.*)/);
+      if (m) lines.push(`endpoints.${m[1].trim()}=${m[2].trim()}`);
+    }
+  }
+
+  const agentPluginPolicy = parseMarkerNestedField(markerFile, 'agent_plugins', 'policy');
+  const agentPluginDigest = parseMarkerNestedField(markerFile, 'agent_plugins', 'contract_digest');
+  if (agentPluginPolicy !== null || agentPluginDigest !== null) {
+    lines.push(`agentPlugins.policy=${agentPluginPolicy ?? ''}`);
+    lines.push(`agentPlugins.contractDigest=${agentPluginDigest ?? ''}`);
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+function extractStoredSignature(markerFile: string): string | null {
+  const rawLines = fs.readFileSync(markerFile, 'utf8').split('\n');
+  let inSignature = false;
+  for (const line of rawLines) {
+    if (/^signature:/.test(line)) {
+      inSignature = true;
+      continue;
+    }
+    if (inSignature && /^[^\s]/.test(line)) break;
+    if (inSignature) {
+      const m = line.match(/^\s+value:\s*(.*)/);
+      if (m) return m[1].trim();
+    }
+  }
+  return null;
+}
+
+function verifySignature(markerFile: string): boolean {
+  const apiKey = parseMarkerField(markerFile, 'apiKey');
+  if (!apiKey) return false;
+  const storedSignature = extractStoredSignature(markerFile);
+  if (!storedSignature) return false;
+  const payload = buildCanonicalPayload(markerFile);
+  const computed = crypto.createHmac('sha256', apiKey).update(payload).digest('hex').toUpperCase();
+  return computed === storedSignature.toUpperCase();
+}
+
 async function readMarkerStatus(workspacePath: string, checkHealth: boolean): Promise<MarkerStatus> {
   const markerFile = findMarkerFile(workspacePath);
   if (!markerFile) {
@@ -102,7 +199,7 @@ async function readMarkerStatus(workspacePath: string, checkHealth: boolean): Pr
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    const body = await response.json() as { nonce?: unknown };
+    const body = (await response.json()) as { nonce?: unknown };
     status.healthNonce = body.nonce === nonce ? 'verified' : 'failed';
     if (status.healthNonce === 'failed') {
       status.healthError = 'Nonce mismatch';
@@ -115,7 +212,7 @@ async function readMarkerStatus(workspacePath: string, checkHealth: boolean): Pr
   return status;
 }
 
-function toolNames(tools: Tool[]): string[] {
+function toolNames(tools: Array<{ name: string }>): string[] {
   return tools.map((tool) => tool.name);
 }
 
@@ -241,7 +338,10 @@ export async function handlePluginHelperTool(
   }
 
   if (FINAL_RESPONSE_TOOL_NAMES.includes(name)) {
-    return handleSessionTool('session_complete_turn', { response: responseText(args) }, bridge);
+    const payload = await handleSessionTool('session_complete_turn', { response: responseText(args) }, bridge);
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }],
+    };
   }
 
   throw new Error(`Unknown plugin helper tool: ${name}`);

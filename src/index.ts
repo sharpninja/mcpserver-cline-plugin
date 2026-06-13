@@ -9,15 +9,32 @@ import { execSync } from 'child_process';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
-import { ReplBridge } from './transport/repl-bridge.js';
-import { fullBootstrap } from './discovery/marker-resolver.js';
-import { cacheFlush } from './cache/cache-manager.js';
-import { todoTools, canHandleTodoTool, handleTodoTool } from './tools/todo.js';
-import { sessionTools, canHandleSessionTool, handleSessionTool } from './tools/session.js';
-import { memoryTools, canHandleMemoryTool, handleMemoryTool } from './tools/memory.js';
-import { requirementsTools, canHandleRequirementsTool, handleRequirementsTool } from './tools/requirements.js';
-import { graphragTools, canHandleGraphragTool, handleGraphragTool } from './tools/graphrag.js';
-import { pluginHelperTools, canHandlePluginHelperTool, handlePluginHelperTool } from './tools/plugin-helpers.js';
+import {
+  ReplBridge,
+  fullBootstrap,
+  cacheFlush,
+  todoTools,
+  canHandleTodoTool,
+  handleTodoTool,
+  sessionTools,
+  canHandleSessionTool,
+  handleSessionTool,
+  memoryTools,
+  canHandleMemoryTool,
+  handleMemoryTool,
+  requirementsTools,
+  canHandleRequirementsTool,
+  handleRequirementsTool,
+  graphragTools,
+  canHandleGraphragTool,
+  handleGraphragTool,
+  setMarkerEnvironment,
+} from '@sharpninja/mcpserver-plugin-core';
+import {
+  pluginHelperTools,
+  canHandlePluginHelperTool,
+  handlePluginHelperTool,
+} from './tools/plugin-helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,6 +58,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: allTools,
 }));
 
+/** Wrap a core tool result in the MCP {content:[{type:'text'}]} envelope. */
+function wrapResult(result: unknown) {
+  if (
+    result &&
+    typeof result === 'object' &&
+    Array.isArray((result as { content?: unknown }).content)
+  ) {
+    return result;
+  }
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+  };
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
   const typedArgs = args as Record<string, unknown>;
@@ -50,11 +81,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   // Ensure REPL is running before any tool call
   await bridge.ensure();
 
-  if (canHandleTodoTool(name)) return handleTodoTool(name, typedArgs, bridge);
-  if (canHandleSessionTool(name)) return handleSessionTool(name, typedArgs, bridge);
-  if (canHandleMemoryTool(name)) return handleMemoryTool(name, typedArgs, bridge);
-  if (canHandleRequirementsTool(name)) return handleRequirementsTool(name, typedArgs, bridge);
-  if (canHandleGraphragTool(name)) return handleGraphragTool(name, typedArgs, bridge);
+  if (canHandleTodoTool(name)) return wrapResult(await handleTodoTool(name, typedArgs, bridge));
+  if (canHandleSessionTool(name)) return wrapResult(await handleSessionTool(name, typedArgs, bridge));
+  if (canHandleMemoryTool(name)) return wrapResult(await handleMemoryTool(name, typedArgs, bridge));
+  if (canHandleRequirementsTool(name))
+    return wrapResult(await handleRequirementsTool(name, typedArgs, bridge));
+  if (canHandleGraphragTool(name)) return wrapResult(await handleGraphragTool(name, typedArgs, bridge));
 
   throw new Error(`Unknown tool: ${name}`);
 });
@@ -62,12 +94,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   // Bootstrap: find marker file and verify HMAC signature
   try {
-    const ctx = await fullBootstrap(process.env.MCP_WORKSPACE_PATH ?? process.cwd());
-    process.env.MCPSERVER_BASE_URL = ctx.baseUrl;
-    process.env.MCPSERVER_API_KEY = ctx.apiKey;
-    process.env.MCPSERVER_WORKSPACE_PATH = ctx.workspacePath;
-    process.env.MCPSERVER_WORKSPACE = ctx.workspace;
-    process.stderr.write(`[mcpserver] Connected to ${ctx.baseUrl} (workspace: ${ctx.workspace})\n`);
+    const marker = await fullBootstrap(process.env.MCP_WORKSPACE_PATH ?? process.cwd());
+    setMarkerEnvironment(marker, 'Cline');
+    process.stderr.write(
+      `[mcpserver] Connected to ${marker.baseUrl} (workspace: ${marker.workspace})\n`,
+    );
   } catch (e) {
     process.stderr.write(`[mcpserver] Bootstrap failed (offline mode): ${e}\n`);
     process.stderr.write('[mcpserver] Tool calls will be cached and replayed when server is available\n');
