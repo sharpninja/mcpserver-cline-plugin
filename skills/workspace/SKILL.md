@@ -8,7 +8,7 @@ version: 0.1.0
 
 Initialize an MCP Server workspace only after proving whether it is already registered.
 
-Use Cline MCP tools for normal calls. If using direct REPL stdio for diagnosis, send a single-line JSON request envelope to `mcpserver-repl --agent-stdio`. JSON is valid YAML and avoids indentation/block-scalar ambiguity.
+Use Cline MCP tools for normal calls. If using direct REPL stdio for diagnosis, send a single-line JSON request envelope to `PowerShell.MCP wrapper`. JSON is valid YAML and avoids indentation/block-scalar ambiguity.
 
 ## Trust Source
 

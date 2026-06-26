@@ -86,4 +86,29 @@ describe('workspace initialization skill', () => {
     expect(content).toMatch(/session-log reconciliation|session log reconciliation|reconcile.*session/i);
     expect(content).toMatch(/workflow\.sessionlog\.(completeTurn|failTurn)/);
   });
+
+  test('documents triage reporting for TEST-MCP-PLUGIN-TRIAGE-001', () => {
+    const content = readSkill('triage');
+
+    expect(content).toMatch(/incidental bug/i);
+    expect(content).toMatch(/active requested fix/i);
+    expect(content).toMatch(/not expect immediate resolution/i);
+    expect(content).toMatch(/continue/i);
+    expect(content).toContain('triage_report');
+    expect(content).toContain('triage_status');
+    expect(content).toContain('workflow.triage.report');
+  });
+
+  test('exposes workflow.triage rules in the REPL YAML schema for TEST-MCP-PLUGIN-TRIAGE-001', () => {
+    const content = fs.readFileSync(path.join(root, 'schemas', 'repl-yaml-message.schema.json'), 'utf8');
+
+    expect(content).toContain('workflow\\\\.(sessionlog|todo|memory|requirements|graphrag|triage)');
+    expect(content).toContain('"triageRules"');
+    expect(content).toContain('workflow.triage.report');
+    expect(content).toContain('workflow.triage.getReport');
+    expect(content).toContain('workflow.triage.queryGroups');
+    expect(content).toContain('workflow.triage.getGroup');
+    expect(content).toContain('workflow.triage.flushGroup');
+    expect(content).toContain('workflow.triage.retryGroup');
+  });
 });
