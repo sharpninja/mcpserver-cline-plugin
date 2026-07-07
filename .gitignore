@@ -2,5 +2,6 @@ node_modules/
 dist/
 cache/pending/*.yaml
 cache/session-state.yaml
+AGENTS-README-FIRST.yaml.deleted-*
 *.js.map
 *.d.ts.map
