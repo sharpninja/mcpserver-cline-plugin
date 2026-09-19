@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 
 export interface MemoryInjection {
@@ -68,12 +67,10 @@ export function getMemoryPluginRoot(pluginRoot?: string): string {
     }
   }
 
-  try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const fromDist = path.resolve(here, '..');
-    if (fs.existsSync(fromDist)) return fromDist;
-  } catch {
-    // import.meta.url is unavailable in some test shims
+  const fromArgv = process.argv[1] ? path.resolve(path.dirname(process.argv[1]), '..') : undefined;
+  if (fromArgv && fs.existsSync(fromArgv) && fs.statSync(fromArgv).isDirectory()) {
+    const descriptor = path.join(fromArgv, 'memory-descriptor.json');
+    if (fs.existsSync(descriptor)) return fromArgv;
   }
 
   return path.resolve(process.cwd());

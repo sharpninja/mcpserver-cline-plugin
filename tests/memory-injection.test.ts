@@ -136,7 +136,7 @@ payload:
         JSON.stringify({
           payload: { result: { items: [{ id: 'MEMORY-REQ-001', text: 'Descriptor-driven injection.' }] } },
         }),
-    });
+    }) as typeof result & { requiredMemories?: string };
     expect(merged.requiredMemories).toBe('REQUIRED MEMORIES - MEMORY-REQ-001: Descriptor-driven injection.');
     expect(merged.content[0].text).toContain('REQUIRED MEMORIES - MEMORY-REQ-001: Descriptor-driven injection.');
     expect(merged.content[0].text).toContain('turn-opened');
@@ -147,7 +147,7 @@ payload:
     const result = { content: [{ type: 'text', text: 'turn opened' }] };
     const merged = await withRequiredMemoryInjection('session_begin_turn', result, {
       pluginRoot: root,
-    });
+    }) as typeof result & { requiredMemories?: string };
     expect(merged.requiredMemories).toBe('REQUIRED MEMORIES - None.');
     expect(merged.content[0].text).toContain('REQUIRED MEMORIES - None.');
     expect(merged.content[0].text).toContain('turn opened');
@@ -220,10 +220,10 @@ payload:
     }
   });
 
-  test('src/index.ts wires session_begin_turn through required-memory injection', () => {
+  test('src/index.ts wires session tools through required-memory injection', () => {
     const source = fs.readFileSync(path.join(root, 'src', 'index.ts'), 'utf8');
     expect(source).toContain('withRequiredMemoryInjection');
-    expect(source).toContain('session_begin_turn');
+    expect(source).toContain('canHandleSessionTool');
     expect(source).toContain('memory-context');
   });
 });
