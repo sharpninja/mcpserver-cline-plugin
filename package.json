@@ -17,8 +17,10 @@
   "files": [
     "dist/",
     "lib/",
+    "hooks/",
     "schemas/",
     "skills/",
+    "memory-descriptor.json",
     "install.sh",
     "server.json"
   ],
