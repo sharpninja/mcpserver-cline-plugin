@@ -35,8 +35,10 @@ import {
   canHandlePluginHelperTool,
   handlePluginHelperTool,
 } from './tools/plugin-helpers.js';
+import { withRequiredMemoryInjection } from './memory-context.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+process.env.MCP_PLUGIN_HOST = process.env.MCP_PLUGIN_HOST || 'cline';
 
 const allTools = [
   ...todoTools,
@@ -82,7 +84,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   await bridge.ensure();
 
   if (canHandleTodoTool(name)) return wrapResult(await handleTodoTool(name, typedArgs, bridge));
-  if (canHandleSessionTool(name)) return wrapResult(await handleSessionTool(name, typedArgs, bridge));
+  if (canHandleSessionTool(name)) {
+    const sessionResult = wrapResult(await handleSessionTool(name, typedArgs, bridge));
+    return withRequiredMemoryInjection(name, sessionResult, {
+      pluginRoot: path.resolve(__dirname, '..'),
+      host: 'cline',
+      bridge,
+    });
+  }
   if (canHandleMemoryTool(name)) return wrapResult(await handleMemoryTool(name, typedArgs, bridge));
   if (canHandleRequirementsTool(name))
     return wrapResult(await handleRequirementsTool(name, typedArgs, bridge));
