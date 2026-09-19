@@ -111,4 +111,25 @@ describe('workspace initialization skill', () => {
     expect(content).toContain('workflow.triage.flushGroup');
     expect(content).toContain('workflow.triage.retryGroup');
   });
+
+  test('packages add-profile skill, Claude port, and 19 profile files', () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
+      files?: string[];
+    };
+    const addProfileDir = path.join(root, 'skills', 'add-profile');
+    const profileDir = path.join(addProfileDir, 'profile');
+    const content = readSkill('add-profile');
+    const profileFiles = fs
+      .readdirSync(profileDir)
+      .filter((name) => name.endsWith('.md'))
+      .sort();
+
+    expect(packageJson.files).toContain('skills/');
+    expect(fs.existsSync(path.join(addProfileDir, 'SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(addProfileDir, 'SKILL.claude.md'))).toBe(true);
+    expect(frontmatter(content)).toMatch(/^name:\s*add-profile$/m);
+    expect(frontmatter(content)).toMatch(/^description:\s*.+$/m);
+    expect(profileFiles).toHaveLength(19);
+    expect(profileFiles).toContain('PROFILE.md');
+  });
 });
