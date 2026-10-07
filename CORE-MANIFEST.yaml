@@ -1,5 +1,5 @@
 coreVersion: 35822cd9
-syncedAtUtc: 2026-10-07T16:04:33Z
+syncedAtUtc: 2026-10-07T17:36:23Z
 files:
   lib/agent-runtime-header.ps1: 9ab9f1483e8650aaf65372ea26a5cc9c610b4a7a3c5903912017755ebbbce5d3
   lib/cache-manager.ps1: 96ffe0638c7445868bf10e338ba739bc5c8d5f5344092ab9bde1c9d6dd9e762e

@@ -163,7 +163,10 @@ function verifySignature(markerFile: string): boolean {
 }
 
 async function readMarkerStatus(workspacePath: string, checkHealth: boolean): Promise<MarkerStatus> {
-  const markerFile = findMarkerFile(workspacePath);
+  // Status for an explicit workspace must not walk into ancestor markers
+  // (e.g. a home-directory AGENTS-README-FIRST.yaml). Direct marker only.
+  const directMarker = path.join(workspacePath, 'AGENTS-README-FIRST.yaml');
+  const markerFile = fs.existsSync(directMarker) ? directMarker : null;
   if (!markerFile) {
     return {
       path: '',
