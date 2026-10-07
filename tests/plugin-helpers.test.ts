@@ -94,7 +94,7 @@ describe('plugin helper tools', () => {
 
       expect(fake.calls).toHaveLength(0);
       expect(status.identity).toMatchObject({
-        pluginName: '@sharpninja/mcpserver-cline-plugin',
+        pluginName: '@qbrainai/qbrain-ai-cline-plugin',
         serverName: 'mcpserver-cline',
       });
       expect(status.workspacePath).toBe(workspace);

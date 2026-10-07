@@ -163,7 +163,10 @@ function verifySignature(markerFile: string): boolean {
 }
 
 async function readMarkerStatus(workspacePath: string, checkHealth: boolean): Promise<MarkerStatus> {
-  const markerFile = findMarkerFile(workspacePath);
+  // Status for an explicit workspace must not walk into ancestor markers
+  // (e.g. a home-directory AGENTS-README-FIRST.yaml). Direct marker only.
+  const directMarker = path.join(workspacePath, 'AGENTS-README-FIRST.yaml');
+  const markerFile = fs.existsSync(directMarker) ? directMarker : null;
   if (!markerFile) {
     return {
       path: '',
@@ -328,7 +331,7 @@ export async function handlePluginHelperTool(
         finalResponse:
           'Call final_response, mcp_final_response, or session_final_response to complete the current turn through session_complete_turn.',
         rawRepl:
-          'Use the typed MCP tools instead of raw workflow.sessionlog.* or direct mcpserver-repl calls.',
+          'Use the typed MCP tools instead of raw workflow.sessionlog.* or direct qbrain-ai-repl or mcpserver-repl calls.',
       },
     };
 

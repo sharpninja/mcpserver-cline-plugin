@@ -1,18 +1,19 @@
 {
-  "name": "@sharpninja/mcpserver-cline-plugin",
+  "name": "@qbrainai/qbrain-ai-cline-plugin",
   "version": "1.118.0",
-  "description": "MCP server bridging Cline (VSCode) to McpServer workflow tools \u2014 TODO management, session logging, requirements tracking, GraphRAG knowledge graph, and per-turn \u002B build-verification enforcement scripts",
+  "description": "MCP server bridging Cline (VSCode) to QBrain.AI workflow tools \u2014 TODO management, session logging, requirements tracking, GraphRAG knowledge graph, and per-turn + build-verification enforcement scripts",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "mcpserver-cline": "dist/index.js"
+    "mcpserver-cline": "dist/index.js",
+    "qbrain-ai-cline": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "jest",
-    "prepublishOnly": "npm run build \u0026\u0026 npm test"
+    "prepublishOnly": "npm run build && npm test"
   },
   "files": [
     "dist/",
@@ -59,6 +60,7 @@
     "typescript": "^5.4.0"
   },
   "engines": {
-    "node": "\u003E=18.0.0"
-  }
+    "node": ">=18.0.0"
+  },
+  "qbrainAiLegacyName": "@sharpninja/mcpserver-cline-plugin"
 }

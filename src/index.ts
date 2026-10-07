@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './qbrain-env.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -115,13 +116,13 @@ async function main() {
 
   // Ensure mcpserver-repl is installed
   try {
-    execSync('which mcpserver-repl', { stdio: 'pipe' });
+    execSync('which qbrain-ai-repl || which mcpserver-repl', { stdio: 'pipe' });
   } catch {
     const ensureScript = path.join(__dirname, '../../lib/ensure-repl.sh');
     try {
       execSync(`bash "${ensureScript}"`, { stdio: 'inherit' });
     } catch {
-      process.stderr.write('[mcpserver] Warning: mcpserver-repl could not be installed automatically\n');
+      process.stderr.write('[mcpserver] Warning: qbrain-ai-repl or mcpserver-repl could not be installed automatically\n');
     }
   }
 

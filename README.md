@@ -1,4 +1,4 @@
-# McpServer Cline Plugin
+# QBrain.AI Cline Plugin
 
 ## External research (Perplexity)
 
