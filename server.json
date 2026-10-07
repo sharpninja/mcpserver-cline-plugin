@@ -1,13 +1,15 @@
 {
   "name": "io.github.sharpninja/mcpserver-cline-plugin",
   "version": "1.1.1",
-  "description": "MCP server for Cline (VSCode) providing TODO management, session logging, requirements tracking, GraphRAG knowledge graph, and per-turn + build-verification enforcement scripts via McpServer",
+  "description": "MCP server for Cline (VSCode) providing TODO management, session logging, requirements tracking, GraphRAG knowledge graph, and per-turn + build-verification enforcement scripts via QBrain.AI",
   "author": "Payton Byrd (The Sharp Ninja)",
   "license": "MIT",
   "homepage": "https://github.com/sharpninja/mcpserver-cline-plugin",
   "repository": "https://github.com/sharpninja/mcpserver-cline-plugin",
   "command": "node",
-  "args": ["dist/index.js"],
+  "args": [
+    "dist/index.js"
+  ],
   "env": {
     "MCP_WORKSPACE_PATH": {
       "description": "Absolute path to the workspace root containing AGENTS-README-FIRST.yaml",
@@ -15,6 +17,10 @@
     },
     "MCPSERVER_CACHE_DIR": {
       "description": "Override the offline cache directory path",
+      "required": false
+    },
+    "QBRAINAI_WORKSPACE_PATH": {
+      "description": "Canonical workspace path. Wins over MCP_WORKSPACE_PATH.",
       "required": false
     }
   }

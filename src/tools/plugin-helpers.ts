@@ -328,7 +328,7 @@ export async function handlePluginHelperTool(
         finalResponse:
           'Call final_response, mcp_final_response, or session_final_response to complete the current turn through session_complete_turn.',
         rawRepl:
-          'Use the typed MCP tools instead of raw workflow.sessionlog.* or direct mcpserver-repl calls.',
+          'Use the typed MCP tools instead of raw workflow.sessionlog.* or direct qbrain-ai-repl or mcpserver-repl calls.',
       },
     };
 

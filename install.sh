@@ -7,7 +7,7 @@ set -euo pipefail
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_JS="${PLUGIN_DIR}/dist/index.js"
 
-echo "McpServer Cline Plugin installer"
+echo "QBrain.AI Cline Plugin installer"
 echo "Plugin directory: ${PLUGIN_DIR}"
 
 # Build if dist/index.js is missing
@@ -23,9 +23,17 @@ if [ ! -f "$SERVER_JS" ]; then
 fi
 
 # Ensure mcpserver-repl is installed
-if ! command -v mcpserver-repl >/dev/null 2>&1; then
-    echo "Installing mcpserver-repl..."
-    bash "$PLUGIN_DIR/lib/ensure-repl.sh" || echo "Warning: mcpserver-repl auto-install failed; install it manually."
+if command -v qbrain-ai-repl >/dev/null 2>&1 || command -v mcpserver-repl >/dev/null 2>&1; then
+    echo "qbrain-ai-repl or mcpserver-repl is already installed."
+else
+    echo "Installing qbrain-ai-repl or mcpserver-repl..."
+    if [ -f "$PLUGIN_DIR/lib/ensure-repl.sh" ]; then
+        bash "$PLUGIN_DIR/lib/ensure-repl.sh" || echo "Warning: REPL auto-install failed; install qbrain-ai-repl or mcpserver-repl manually."
+    elif command -v pwsh >/dev/null 2>&1; then
+        pwsh -NoLogo -NoProfile -File "$PLUGIN_DIR/lib/ensure-repl.ps1" || echo "Warning: REPL auto-install failed; install qbrain-ai-repl or mcpserver-repl manually."
+    else
+        echo "Warning: neither REPL command is installed and pwsh is unavailable."
+    fi
 fi
 
 # Determine Cline settings path by OS
@@ -44,7 +52,7 @@ node -e "
 const fs = require('fs');
 const settingsPath = process.argv[1];
 const serverJs = process.argv[2];
-const workspacePath = process.argv[3] || process.cwd();
+const workspacePath = process.env.QBRAINAI_WORKSPACE_PATH || process.argv[3] || process.env.MCP_WORKSPACE_PATH || process.cwd();
 
 let settings = {};
 if (fs.existsSync(settingsPath)) {
